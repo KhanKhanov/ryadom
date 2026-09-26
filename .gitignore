@@ -1,0 +1,28 @@
+# Секреты
+.env
+*.jks
+*.keystore
+local.properties
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Android
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Web
+node_modules/
+web/dist/
+web/coverage/
+*.tsbuildinfo

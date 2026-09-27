@@ -7,8 +7,8 @@ info:
     Контракт меняется здесь в первую очередь, затем — код сервера и клиентов.
     Модели API продублированы в модуле `shared` (Kotlin Multiplatform).
   license:
-    name: Apache-2.0
-    identifier: Apache-2.0
+    name: AGPL-3.0-or-later
+    identifier: AGPL-3.0-or-later
 servers:
   - url: http://localhost:8080
     description: Локальная разработка

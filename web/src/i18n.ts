@@ -6,10 +6,12 @@ export const strings = {
   ru: {
     appName: 'Рядом',
     welcomeDescription: 'Видеопомощь незрячим. Кабинет волонтёра в разработке.',
+    sourceCode: 'Исходный код',
   },
   en: {
     appName: 'Ryadom',
     welcomeDescription: 'Video assistance for blind people. The volunteer app is under development.',
+    sourceCode: 'Source code',
   },
 } satisfies Record<Language, Record<string, string>>
 
@@ -20,4 +22,13 @@ export function detectLanguage(preferred: readonly string[]): Language {
     if (base === 'ru' || base === 'en') return base
   }
   return 'ru'
+}
+
+/**
+ * Применяет язык ко всей странице: атрибут lang (по нему экранный диктор выбирает голос)
+ * и заголовок вкладки. В index.html заголовок на русском — он виден только до загрузки скрипта.
+ */
+export function applyLanguageToDocument(doc: Document, language: Language): void {
+  doc.documentElement.lang = language
+  doc.title = strings[language].appName
 }

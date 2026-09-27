@@ -6,7 +6,8 @@ rtc:
   tcp_port: 7881
   port_range_start: 50000
   port_range_end: 50100
-  # Локально внешний IP не нужен; на сервере (этап 9) включается use_external_ip.
+  # Локально адрес для клиентов задаёт переменная NODE_IP (см. docker-compose.yml);
+  # на сервере (этап 9) включается use_external_ip.
   use_external_ip: false
 logging:
   level: info

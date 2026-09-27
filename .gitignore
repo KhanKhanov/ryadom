@@ -10,6 +10,10 @@ local.properties
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# Локальные настройки Claude Code (содержат пути конкретного компьютера)
+.claude/launch.json
+.claude/settings.local.json
+
 # IDE
 .idea/
 *.iml

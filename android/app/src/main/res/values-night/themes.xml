@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Тёмная тема окна для ночного режима системы. Светлая — в values/themes.xml. -->
+<resources>
+    <style name="Theme.Ryadom" parent="android:Theme.Material.NoActionBar" />
+</resources>

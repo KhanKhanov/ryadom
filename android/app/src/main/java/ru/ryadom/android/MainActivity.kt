@@ -1,5 +1,6 @@
 package ru.ryadom.android
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,13 +20,14 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import ru.ryadom.android.ui.theme.RyadomTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            RyadomTheme {
                 WelcomeScreen()
             }
         }
@@ -63,7 +65,8 @@ fun WelcomeScreen(modifier: Modifier = Modifier) {
 }
 
 @Preview(showBackground = true)
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun WelcomeScreenPreview() {
-    MaterialTheme { WelcomeScreen() }
+    RyadomTheme { WelcomeScreen() }
 }

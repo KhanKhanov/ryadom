@@ -56,6 +56,16 @@
 cd web && npm run lint && npm test
 ```
 
+Доступность Android: в Compose-тесте каждого экрана вызывайте `assertScreenIsAccessible()` (`android/app/src/test/.../testing/AccessibilityChecks.kt`) — тест упадёт, если у кнопки нет описания для TalkBack или она меньше 48 dp.
+
+Проверка контракта API (из корня репозитория; правила — в `redocly.yaml`):
+
+```bash
+REDOCLY_TELEMETRY=off npx --yes @redocly/cli@2.54.3 lint
+```
+
+`REDOCLY_TELEMETRY=off` отключает отправку статистики использования в Redocly.
+
 Форматирование Kotlin: `./gradlew ktlintFormat`.
 
 ## Лицензия

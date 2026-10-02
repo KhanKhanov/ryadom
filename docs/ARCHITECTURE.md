@@ -176,7 +176,9 @@ WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `re
 ## 12. Тестирование
 
 - Backend: unit-тесты; интеграционные тесты с Testcontainers (PostgreSQL, Redis); тесты подбора волонтёра с поддельными часами и поддельным push-отправщиком.
-- Android: unit-тесты ViewModel, Compose UI-тесты, автоматические проверки доступности (Accessibility Test Framework), ручной чек-лист TalkBack перед каждой сборкой для тестировщиков.
+- Android: unit-тесты ViewModel, Compose UI-тесты, ручной чек-лист TalkBack перед каждой сборкой для тестировщиков. Автоматические проверки доступности:
+  - с этапа 0 — в unit-тестах (Robolectric) каждого экрана вызывается `assertScreenIsAccessible()`: у интерактивных элементов есть описание для TalkBack и размер от 48 dp;
+  - с этапа 4 — Accessibility Test Framework в UI-тестах на эмуляторе (контраст, порядок фокуса и др.). Под Robolectric ATF Compose-экраны не проверяет.
 - Сквозной тест звонка: локальный docker-compose + эмулятор Android (незрячий) + браузер (волонтёр).
 - Устройства: ваш Android-телефон + эмулятор с TalkBack; позже — недорогой телефон на Android 8–10.
 - Незрячих тестировщиков пока нет — искать через ВОС и профильные сообщества параллельно с разработкой, к этапу 4.

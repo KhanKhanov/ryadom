@@ -11,6 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import ru.ryadom.android.testing.assertScreenIsAccessible
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "ru")
@@ -26,6 +27,13 @@ class WelcomeScreenTest {
             .onNodeWithText("Рядом")
             .assertIsDisplayed()
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+    }
+
+    @Test
+    fun screenPassesAccessibilityChecks() {
+        composeRule.setContent { WelcomeScreen() }
+
+        composeRule.assertScreenIsAccessible()
     }
 
     @Test

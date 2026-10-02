@@ -27,7 +27,7 @@ jobs:
       - run: ./gradlew :backend:ktlintCheck :shared:ktlintCheck :backend:test :shared:jvmTest
 
   android:
-    name: Android (lint, unit-тесты)
+    name: Android (lint, unit-тесты, доступность)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -49,6 +49,21 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew :shared:compileKotlinIosArm64 :shared:iosSimulatorArm64Test
+
+  openapi:
+    name: Контракт API (openapi.yaml)
+    runs-on: ubuntu-latest
+    env:
+      # Не отправлять статистику использования Redocly и не проверять обновления.
+      REDOCLY_TELEMETRY: "off"
+      REDOCLY_SUPPRESS_UPDATE_NOTICE: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+      # Правила — в redocly.yaml, исключения — в .redocly.lint-ignore.yaml. Версию меняйте и в README.
+      - run: npx --yes @redocly/cli@2.54.3 lint
 
   web:
     name: Web (lint, типы, тесты, сборка)

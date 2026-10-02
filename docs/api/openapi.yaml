@@ -18,6 +18,8 @@ paths:
       operationId: getHealth
       summary: Проверка, что сервер работает
       tags: [service]
+      # Доступно без входа: используется для проверки, что сервер жив.
+      security: []
       responses:
         '200':
           description: Сервер работает

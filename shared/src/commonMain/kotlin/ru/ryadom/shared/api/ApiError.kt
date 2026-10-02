@@ -26,5 +26,18 @@ object ApiErrorCodes {
     const val FORBIDDEN = "forbidden"
     const val NOT_FOUND = "not_found"
     const val PROVIDER_UNAVAILABLE = "provider_unavailable"
+
+    /** У незрячего уже есть активный запрос или у волонтёра уже идёт звонок (поэтому нельзя и сменить роль). */
+    const val ACTIVE_REQUEST_EXISTS = "active_request_exists"
+
+    /** Запрос уже принял другой волонтёр. */
+    const val REQUEST_TAKEN = "request_taken"
+
+    /** Запрос закрыт: отменён, никто не ответил или звонок завершён. */
+    const val REQUEST_CLOSED = "request_closed"
+
+    /** Оценить нельзя: запрос никто не принял, звонка не было. */
+    const val CALL_NOT_STARTED = "call_not_started"
+    const val TOO_MANY_REQUESTS = "too_many_requests"
     const val INTERNAL_ERROR = "internal_error"
 }

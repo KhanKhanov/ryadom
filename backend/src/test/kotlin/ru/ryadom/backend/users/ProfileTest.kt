@@ -10,6 +10,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import ru.ryadom.backend.requests.acceptRequest
+import ru.ryadom.backend.requests.cancelRequest
+import ru.ryadom.backend.requests.requestHelp
 import ru.ryadom.backend.testing.ApiTestScope
 import ru.ryadom.backend.testing.TestDatabase
 import ru.ryadom.backend.testing.apiTest
@@ -170,6 +173,32 @@ class ProfileTest {
             patchMe(login, UpdateProfileRequest(role = SelectableRole.BLIND))
                 .assertError(HttpStatusCode.Forbidden, ApiErrorCodes.FORBIDDEN)
             assertEquals(HttpStatusCode.OK, patchMe(login, UpdateProfileRequest(displayName = "Модератор")).status)
+        }
+
+    @Test
+    fun roleCannotChangeDuringHelpRequestOrCall() =
+        apiTest {
+            val blind = blind()
+            val volunteer = volunteer("volunteer-1")
+            connect(volunteer)
+            val request = requestHelp(blind)
+            patchMe(blind, UpdateProfileRequest(role = SelectableRole.VOLUNTEER))
+                .assertError(HttpStatusCode.Conflict, ApiErrorCodes.ACTIVE_REQUEST_EXISTS)
+
+            acceptRequest(volunteer, request.id)
+
+            patchMe(blind, UpdateProfileRequest(role = SelectableRole.VOLUNTEER))
+                .assertError(HttpStatusCode.Conflict, ApiErrorCodes.ACTIVE_REQUEST_EXISTS)
+            patchMe(volunteer, UpdateProfileRequest(role = SelectableRole.BLIND))
+                .assertError(HttpStatusCode.Conflict, ApiErrorCodes.ACTIVE_REQUEST_EXISTS)
+            // Остальные поля и та же роль — можно.
+            val sameRole = patchMe(blind, UpdateProfileRequest(role = SelectableRole.BLIND, displayName = "Анна"))
+            assertEquals(HttpStatusCode.OK, sameRole.status)
+
+            cancelRequest(blind, request.id)
+
+            assertEquals(HttpStatusCode.OK, patchMe(blind, UpdateProfileRequest(role = SelectableRole.VOLUNTEER)).status)
+            assertEquals(HttpStatusCode.OK, patchMe(volunteer, UpdateProfileRequest(role = SelectableRole.BLIND)).status)
         }
 
     @Test

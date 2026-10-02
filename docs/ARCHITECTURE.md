@@ -1,7 +1,7 @@
 # Архитектура MVP «Рядом» — видеопомощь незрячим
 
 > Рабочее название «Рядом» (пакет `ru.ryadom`) — заменить, когда появится финальное.
-> Версия документа: 26.09.2026. Источник истины для разработки вместе с `docs/api/openapi.yaml`.
+> Версия документа: 02.10.2026. Источник истины для разработки вместе с `docs/api/openapi.yaml`.
 
 ## 1. Ключевые решения
 
@@ -13,7 +13,7 @@
 | Веб | React + TypeScript (Vite): простая страница волонтёра и админка | Второй конец звонка для тестов; вход для волонтёров с iPhone до iOS-приложения |
 | Видео | LiveKit (open-source SFU) на своём сервере, встроенный TURN | Нет зависимости от иностранных сервисов; SDK для Android, JS и Kotlin-сервера |
 | База данных | PostgreSQL + Flyway-миграции | Надёжно и привычно |
-| Очередь и блокировки | Redis | Атомарный «кто первый принял звонок», онлайн-статусы |
+| Очередь и блокировки | PostgreSQL + память backend; Redis — позже | «Кто первый принял звонок» — атомарный `UPDATE … WHERE status = 'searching'` в той же транзакции, что и остальные изменения; онлайн-статусы — открытые WebSocket в памяти (сервер backend один). Redis понадобится, когда серверов backend станет несколько (решено на этапе 2) |
 | Push | FCM + RuStore Push (Android), Web Push (браузер), APNs + VoIP-push (iOS, позже) | Отправка через общий интерфейс — новый канал добавляется без изменения логики |
 | Вход | Яндекс ID и VK ID (OAuth); вход по телефону — после появления юрлица | Не нужны договоры с SMS-провайдерами на старте |
 | Языки | Русский и английский | Все строки только через ресурсы |
@@ -29,7 +29,7 @@ flowchart LR
   I[iOS-приложение<br/>позже] -.-> B
   W[Веб: волонтёр и админка] -- REST + WebSocket --> B
   B --> P[(PostgreSQL)]
-  B --> R[(Redis)]
+  B -.-> R[(Redis<br/>при нескольких серверах)]
   B -- токены комнат, webhook --> L[LiveKit SFU + TURN]
   A -- WebRTC видео/аудио --> L
   W -- WebRTC --> L
@@ -50,18 +50,19 @@ sequenceDiagram
   participant L as LiveKit
   U->>B: POST /requests (язык, пожелание по полу)
   B-->>U: id, статус searching (UI объявляет: «Ищем волонтёра»)
-  B->>V: push волна 1 (5 человек)
+  B->>V: волна 1 (5 человек): WS request.incoming, с этапа 5 — и push
   Note over B: каждые 10 с — следующая волна (10 человек), максимум 60 с
   V->>B: POST /requests/{id}/accept
-  B->>B: Redis SET NX — побеждает первый
+  B->>B: UPDATE … WHERE status = 'searching' — побеждает первый
   B-->>V: токен LiveKit (победителю), 409 остальным
-  B->>V: push «уже ответили» остальным уведомлённым
+  B->>V: WS request.taken остальным уведомлённым
   B-->>U: WS request.accepted + токен LiveKit
   U->>L: публикует видео (задняя камера) + аудио
   V->>L: публикует только аудио
+  L->>B: webhook participant_joined → in_call
   V-->>U: data-сообщение torch:on/off
-  L->>B: webhook room_finished
-  B-->>U: экран оценки
+  L->>B: webhook room_finished → ended
+  B-->>U: WS request.ended — экран оценки
 ```
 
 ## 4. Подбор волонтёра
@@ -72,26 +73,36 @@ sequenceDiagram
 - говорит на языке запроса;
 - подходит по полу, если незрячий указал пожелание;
 - по его часовому поясу сейчас 08:00–22:00 (или своё окно «не беспокоить»);
-- не находится в звонке и не получал уведомлений последние 10 минут;
-- сортировка: кого дольше всего не беспокоили, при равенстве — случайно.
+- не находится в звонке, ещё не получал вызов по этому запросу и не является его автором;
+- очерёдность: кого дольше всего не беспокоили (последний вызов по любому запросу или конец его звонка), при равенстве — случайно.
 
-Волны: сразу 5 человек, далее каждые 10 секунд по 10, всего до 60 секунд. Если никто не принял, статус `no_answer`, незрячему объявляется «Сейчас никто не ответил, попробуйте ещё раз». Все параметры (размер волн, интервалы, окно) задаются в конфиге, а не в коде.
+Жёсткой паузы между вызовами одному волонтёру нет (решено на этапе 2). Пока волонтёров мало, пауза отсекала бы почти всех: в первой волне 5 человек, один принимает вызов, а остальные четверо выпадали бы на 10 минут, и повторный запрос незрячего не доходил бы ни до кого. Нагрузку распределяет очерёдность: недавно побеспокоенный волонтёр попадает в волну, только если остальных подходящих не хватает.
 
-Ограничения: у незрячего одновременно не больше одного активного запроса; частота запросов ограничена от злоупотреблений.
+Волны: сразу 5 человек, далее каждые 10 секунд по 10, всего до 60 секунд. Если никто не принял, статус `no_answer`, незрячему объявляется «Сейчас никто не ответил, попробуйте ещё раз». Все параметры (размер волн, интервалы, окно) задаются в конфиге, а не в коде (`backend/src/main/resources/application.conf`, разделы `matching`, `requests`, `profile.defaultDoNotDisturb`).
+
+Ограничения: у незрячего одновременно не больше одного активного запроса, у волонтёра — не больше одного звонка (гарантируют уникальные индексы в базе); частота запросов ограничена от злоупотреблений (по умолчанию 20 в час).
+
+Как устроено (этап 2):
+
+- правила отбора и очерёдность — чистая функция `VolunteerMatcher` с unit-тестами;
+- волны отправляет `RequestDispatcher`: раз в секунду проверяет идущие поиски. Номер следующей волны хранится в базе (`help_requests.next_wave`), поэтому после перезапуска сервера поиск продолжается;
+- до этапа 5 вызов доставляется только по WebSocket, поэтому кандидаты — волонтёры с открытым соединением; на этапе 5 добавятся те, у кого зарегистрирован push-токен;
+- роль нельзя сменить, пока у пользователя есть активный запрос или идёт звонок (`PATCH /me` отвечает 409);
+- страховка: звонок, о завершении которого LiveKit не сообщил, закрывается через 3 часа.
 
 ## 5. Модель данных
 
 Данные о здоровье и инвалидности не собираются. Роль выбирает сам пользователь.
-Схема создаётся миграциями Flyway (`backend/src/main/resources/db/migration`) по этапам: на этапе 1 — `users`, `auth_identities`, `refresh_tokens`; остальные таблицы — в этапах, где они нужны.
+Схема создаётся миграциями Flyway (`backend/src/main/resources/db/migration`) по этапам: на этапе 1 — `users`, `auth_identities`, `refresh_tokens`; на этапе 2 — `help_requests`, `request_notifications`, `ratings`; остальные таблицы — в этапах, где они нужны.
 
 | Таблица | Основные поля |
 |---|---|
 | `users` | id, role (`blind`/`volunteer`/`admin`; NULL — ещё не выбрана), display_name, languages[], gender (необязательно), gender_preference (для незрячего), timezone, dnd_from, dnd_to, notifications_enabled, banned_at, created_at |
 | `auth_identities` | id, user_id, provider (`yandex`/`vk`/`dev`), subject, created_at |
 | `devices` | id, user_id, push_provider (`fcm`/`rustore`/`webpush`/`apns`/`apns_voip`), token, platform, updated_at |
-| `help_requests` | id, blind_user_id, language, gender_preference, status (`searching`/`accepted`/`in_call`/`ended`/`no_answer`/`cancelled`), accepted_by, created_at, accepted_at, ended_at |
-| `request_notifications` | request_id, volunteer_id, wave, sent_at, result (`accepted`/`too_late`/`ignored`) |
-| `ratings` | request_id, from_user_id, score (1–5 или «помогло/не помогло»), comment |
+| `help_requests` | id, blind_user_id, language, gender_preference, status (`searching`/`accepted`/`in_call`/`ended`/`no_answer`/`cancelled`), accepted_by, next_wave, created_at, accepted_at, ended_at |
+| `request_notifications` | request_id, volunteer_id, wave, sent_at, result (`accepted`/`too_late`; NULL — не ответил) |
+| `ratings` | request_id, from_user_id, helped («помогло/не помогло» — проще всего с TalkBack), created_at. Без текстового комментария: в нём могли бы оказаться данные о здоровье; жалобы — в `reports` |
 | `reports` | id, request_id, from_user_id, against_user_id, reason, text, status, resolved_by, created_at |
 | `refresh_tokens` | id, user_id, token_hash (SHA-256, сам токен не хранится), created_at, expires_at, revoked_at |
 
@@ -108,15 +119,24 @@ REST, JSON, авторизация по JWT (access 15 мин + refresh 90 дн�
 | GET / PATCH | `/me` | Профиль, роль, языки, пол, окно «не беспокоить» |
 | POST | `/devices` | Регистрация push-токена |
 | POST | `/requests` | Незрячий просит помощи |
-| DELETE | `/requests/{id}` | Отмена |
+| GET | `/requests/current` | Текущий активный запрос или звонок — восстановление после перезапуска приложения |
+| GET | `/requests/{id}` | Состояние запроса — после переподключения WebSocket |
+| DELETE | `/requests/{id}` | Отмена поиска или завершение звонка (незрячий) |
 | POST | `/requests/{id}/accept` | Волонтёр принимает; ответ — URL и токен LiveKit |
-| POST | `/requests/{id}/rating` | Оценка после звонка |
+| POST | `/requests/{id}/rating` | Оценка после звонка: помогло / не помогло |
 | POST | `/reports` | Жалоба |
 | POST | `/webhooks/livekit` | События комнат от LiveKit |
 | GET | `/admin/reports`, `/admin/metrics` | Админка |
 | POST | `/admin/users/{id}/ban` | Блокировка |
 
-WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `request.cancelled`, `request.taken` (для волонтёров, звонок уже принят).
+WebSocket `/ws` — события: `request.incoming` (волонтёру — новый вызов), `request.accepted`, `request.no_answer`, `request.cancelled`, `request.taken` (для волонтёров, звонок уже принят), `request.ended` (звонок завершён). Каждое событие содержит актуальное состояние запроса. Вход — первым сообщением `{"type":"auth","accessToken":…}`, потому что браузер не передаёт заголовок `Authorization` при открытии WebSocket; после обновления токенов клиент присылает `auth` ещё раз. Пропущенные без соединения события не повторяются: клиент перечитывает состояние через `GET /requests/...`.
+
+Совместимость версий. Сервер обновляется сразу, а приложения — когда пользователь поставит новый APK, поэтому старые версии работают долго. Отсюда правила:
+
+- сервер строго проверяет тела запросов: неизвестное поле — ошибка 400, чтобы опечатки в клиенте были видны сразу;
+- клиенты, наоборот, игнорируют неизвестные поля в ответах, неизвестные события WebSocket и неизвестные коды ошибок (показывают общее сообщение);
+- поля в ответах только добавляются; поля запросов не удаляются и не переименовываются, новые поля запросов — необязательные;
+- новое значение перечисления в ответе (статус, роль) старый клиент разобрать не сможет: сначала клиенты должны научиться пропускать неизвестные значения, иначе — новое поле.
 
 ## 7. Android-приложение
 
@@ -162,25 +182,27 @@ WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `re
 
 | Ресурс | Что на нём | Примерно |
 |---|---|---|
-| ВМ 1: 2 vCPU / 4 ГБ | backend, PostgreSQL, Redis, Caddy (TLS) в Docker Compose | см. ниже |
+| ВМ 1: 2 vCPU / 4 ГБ | backend, PostgreSQL, Caddy (TLS) в Docker Compose | см. ниже |
 | ВМ 2: 2–4 vCPU / 4 ГБ, публичный IP | LiveKit + встроенный TURN | см. ниже |
 | Object Storage | резервные копии БД (ежедневно) | копейки |
 | Container Registry | образы backend и web | копейки |
 
 Ориентир — 8–15 тыс. ₽ в месяц на старте, нужно проверить калькулятором Yandex Cloud. Основная переменная статья — исходящий видеотрафик. При росте PostgreSQL переносится в Managed PostgreSQL.
 
-Локальная разработка — тот же `docker-compose.yml` (PostgreSQL, Redis, LiveKit в dev-режиме) на вашем компьютере.
+События комнат (webhook) LiveKit с ВМ 2 отправляет в backend по внутренней сети Yandex Cloud; снаружи путь `/webhooks/*` закрыт в Caddy.
+
+Локальная разработка — `infra/docker-compose.yml` (PostgreSQL и LiveKit в dev-режиме) на вашем компьютере. Backend запускается отдельно (`./gradlew :backend:run`): Gradle настраивает весь проект, включая `shared` с Android-таргетом, поэтому сборке нужен Android SDK, которого нет в Docker. Образ backend для сервера собирается из готовой сборки CI (`./gradlew :backend:installDist`, там SDK есть) поверх образа с JRE.
 
 ## 11. CI/CD (GitHub Actions)
 
-- На каждый PR: тесты и линтеры backend (Gradle), Android (lint, unit, проверки доступности), web (lint, тесты).
+- На каждый PR: тесты и линтеры backend (Gradle), Android (lint, unit, проверки доступности), web (lint, тесты), проверка `openapi.yaml` (Redocly) и сборка `shared` под iOS.
 - На merge в `main`: подписанный APK как артефакт сборки (ключ — в секретах), Docker-образы в Yandex Container Registry, деплой на ВМ по SSH (`docker compose pull && up -d`).
 - На merge в `main`: граф зависимостей Gradle для Dependabot (`.github/workflows/dependency-graph.yml`) — только то, что получают пользователи (backend, release APK, shared для iOS), без инструментов сборки и тестов. Автоматическая выгрузка GitHub («Automatic dependency submission») выключена. Dependabot только сообщает об уязвимостях; транзитивные зависимости Gradle исправляются вручную через BOM или ограничения версий в `libs.versions.toml`.
 - Зеркалирование репозитория на GitFlic/GitVerse.
 
 ## 12. Тестирование
 
-- Backend: unit-тесты; интеграционные тесты с Testcontainers (PostgreSQL, Redis); тесты подбора волонтёра с поддельными часами и поддельным push-отправщиком.
+- Backend: unit-тесты; интеграционные тесты с Testcontainers (PostgreSQL); тесты подбора волонтёра с поддельными часами и поддельным push-отправщиком.
 - Android: unit-тесты ViewModel, Compose UI-тесты, ручной чек-лист TalkBack перед каждой сборкой для тестировщиков. Автоматические проверки доступности:
   - с этапа 0 — в unit-тестах (Robolectric) каждого экрана вызывается `assertScreenIsAccessible()`: у интерактивных элементов есть описание для TalkBack и размер от 48 dp;
   - с этапа 4 — Accessibility Test Framework в UI-тестах на эмуляторе (контраст, порядок фокуса и др.). Под Robolectric ATF Compose-экраны не проверяет.
@@ -209,6 +231,25 @@ WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `re
 | 12 | Бета iOS через TestFlight, публикация в App Store |
 
 До этапа 11 модуль `shared` проверяется сборкой под iOS-таргет в CI (без UI) на macOS-раннере GitHub Actions — для открытых репозиториев он бесплатный, — чтобы в `shared` случайно не попал Android-код.
+
+### Отложенные задачи
+
+То, что выяснилось на прошлых этапах и должно войти в будущие. Каждый этап — новая сессия Claude Code, поэтому такие задачи записываются здесь, а не только в отчёте об этапе. Выполненное — удалять.
+
+- **Отдельный небольшой PR перед этапом 3.** Dependabot version updates: файл `.github/dependabot.yml` для экосистем `gradle` (Dependabot обновляет `gradle/libs.versions.toml` и Gradle Wrapper), `npm` (каталог `web/`) и `github-actions`. Обновления группами — один PR на экосистему раз в неделю или месяц, а не поток мелких PR; каждый PR проходит CI, вливает владелец. Зачем: уязвимости в инструментах сборки (плагины Android, Kotlin, Ktor, ktlint) исправляются только обновлением самих плагинов, а граф зависимостей их намеренно не включает (раздел 11). Dependabot security updates в настройках репозитория выключены: для транзитивных зависимостей Gradle они не создают PR, а только падают.
+- **Этап 3.**
+  - TypeScript 7: перейти, когда его поддержит typescript-eslint (версия 8.70 требует TypeScript ниже 6.1).
+  - Клиент API в web игнорирует неизвестные поля, события и коды ошибок (раздел 6, «Совместимость версий»).
+- **Этап 4.** Ночью (22:00–08:00 по времени волонтёров) почти все волонтёры в режиме «не беспокоить», и запросы чаще заканчиваются `no_answer`. Текст для незрячего при `no_answer` должен это учитывать.
+- **Этап 8.**
+  - Блокировка: сразу закрывать WebSocket пользователя (код `Realtime.CLOSE_BANNED`; сейчас соединение живёт до истечения access-токена, до 15 минут), отзывать его refresh-токены и завершать идущий звонок через серверный API LiveKit (сейчас `LiveKitService` сетевых запросов не делает). Новых вызовов заблокированный волонтёр уже не получает и принять запрос не может.
+  - Назначение администратора — SQL-скриптом в `infra/`: через `PATCH /me` роль `admin` не выдаётся.
+- **Этап 9.**
+  - Webhook LiveKit → backend по внутренней сети, Caddy не пропускает `/webhooks/*` снаружи (раздел 10).
+  - Общий лимит размера тела запросов в Caddy: backend читает тело webhook целиком до проверки подписи.
+  - Отдельный шаблон переменных окружения для сервера: `infra/.env.example` рассчитан на разработку (`AUTH_DEV_ENABLED=true`).
+  - Образ backend: `./gradlew :backend:installDist` в CI и образ с JRE, Android SDK в Docker не нужен (раздел 10).
+  - LiveKit: `use_external_ip: true` и адрес webhook для сервера (сейчас в `infra/livekit/livekit.yaml` — настройки для локальной разработки).
 
 ## 14. Открытые вопросы
 

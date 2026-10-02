@@ -45,3 +45,37 @@ object RefreshTokensTable : Table("refresh_tokens") {
 
     override val primaryKey = PrimaryKey(id)
 }
+
+object HelpRequestsTable : Table("help_requests") {
+    val id = uuid("id")
+    val blindUserId = uuid("blind_user_id").references(UsersTable.id)
+    val language = text("language")
+    val genderPreference = text("gender_preference").nullable()
+    val status = text("status")
+    val acceptedBy = uuid("accepted_by").references(UsersTable.id).nullable()
+    val nextWave = integer("next_wave")
+    val createdAt = timestampWithTimeZone("created_at")
+    val acceptedAt = timestampWithTimeZone("accepted_at").nullable()
+    val endedAt = timestampWithTimeZone("ended_at").nullable()
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object RequestNotificationsTable : Table("request_notifications") {
+    val requestId = uuid("request_id").references(HelpRequestsTable.id)
+    val volunteerId = uuid("volunteer_id").references(UsersTable.id)
+    val wave = integer("wave")
+    val sentAt = timestampWithTimeZone("sent_at")
+    val result = text("result").nullable()
+
+    override val primaryKey = PrimaryKey(requestId, volunteerId)
+}
+
+object RatingsTable : Table("ratings") {
+    val requestId = uuid("request_id").references(HelpRequestsTable.id)
+    val fromUserId = uuid("from_user_id").references(UsersTable.id)
+    val helped = bool("helped")
+    val createdAt = timestampWithTimeZone("created_at")
+
+    override val primaryKey = PrimaryKey(requestId, fromUserId)
+}

@@ -16,5 +16,28 @@ object ApiPaths {
 
     const val ME = "/me"
 
+    const val REQUESTS = "/requests"
+    const val REQUESTS_CURRENT = "/requests/current"
+
+    /** Имя параметра пути в [REQUEST], [REQUEST_ACCEPT] и [REQUEST_RATING]. */
+    const val REQUEST_ID_PARAM = "requestId"
+
+    // Шаблоны путей для сервера; клиенту удобнее функции request(), requestAccept(), requestRating().
+    const val REQUEST = "/requests/{$REQUEST_ID_PARAM}"
+    const val REQUEST_ACCEPT = "$REQUEST/accept"
+    const val REQUEST_RATING = "$REQUEST/rating"
+
+    /** WebSocket событий в реальном времени (см. [ClientMessage] и [ServerEvent]). */
+    const val REALTIME = "/ws"
+
+    /** Сюда сервер LiveKit присылает события комнат. Клиенты этот путь не вызывают. */
+    const val WEBHOOKS_LIVEKIT = "/webhooks/livekit"
+
     fun authOAuth(provider: OAuthProvider): String = "/auth/oauth/${provider.pathValue}"
+
+    fun request(requestId: String): String = "$REQUESTS/$requestId"
+
+    fun requestAccept(requestId: String): String = "${request(requestId)}/accept"
+
+    fun requestRating(requestId: String): String = "${request(requestId)}/rating"
 }

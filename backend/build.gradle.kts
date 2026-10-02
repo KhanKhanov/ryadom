@@ -34,6 +34,7 @@ dependencies {
     implementation(libs.ktor.server.auth.jwt)
     // Принудительная версия Jackson для зависимостей ktor-server-auth-jwt (см. libs.versions.toml).
     implementation(platform(libs.jackson.bom))
+    implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.serialization.kotlinx.json)
     // HTTP-клиент — для запросов к Яндекс ID.
     implementation(libs.ktor.client.core)
@@ -49,6 +50,9 @@ dependencies {
     implementation(libs.postgresql)
     implementation(libs.hikaricp)
 
+    // Токены для входа в комнаты LiveKit и проверка подписи его webhook.
+    implementation(libs.livekit.server)
+
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.ktor.client.content.negotiation)
@@ -63,7 +67,8 @@ tasks.test {
 
 // Для локального запуска (`./gradlew :backend:run`) переменные окружения берутся из infra/.env —
 // того же файла, что читает docker-compose (пароль PostgreSQL, JWT_SECRET и др.).
-// Переменные, уже заданные в окружении, имеют приоритет над файлом.
+// Переменные, уже заданные в окружении, имеют приоритет над файлом. Пустое значение (`LIVEKIT_URL=`)
+// считается незаданным: действует значение по умолчанию из application.conf.
 tasks.named<JavaExec>("run") {
     val envFile = rootProject.file("infra/.env")
     if (envFile.exists()) {
@@ -72,7 +77,7 @@ tasks.named<JavaExec>("run") {
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") && "=" in it }
             .map { line -> line.substringBefore("=").trim() to line.substringAfter("=").trim().removeSurrounding("\"") }
-            .filter { (key, _) -> !providers.environmentVariable(key).isPresent }
+            .filter { (key, value) -> value.isNotEmpty() && !providers.environmentVariable(key).isPresent }
             .forEach { (key, value) -> environment(key, value) }
     }
 }

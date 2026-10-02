@@ -64,3 +64,6 @@ class AppDatabase(
 
 /** В базе время хранится как `timestamptz`; в коде — [Instant]. */
 internal fun Instant.toDb(): OffsetDateTime = atOffset(ZoneOffset.UTC)
+
+/** Код ошибки PostgreSQL «нарушение уникальности» (`ExposedSQLException.sqlState`). */
+internal const val UNIQUE_VIOLATION = "23505"

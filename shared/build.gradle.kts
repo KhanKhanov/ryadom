@@ -44,3 +44,7 @@ kotlin {
         }
     }
 }
+
+ktlint {
+    version.set(libs.versions.ktlint.cli)
+}

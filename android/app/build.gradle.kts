@@ -50,6 +50,10 @@ kotlin {
     )
 }
 
+ktlint {
+    version.set(libs.versions.ktlint.cli)
+}
+
 dependencies {
     implementation(project(":shared"))
 

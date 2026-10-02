@@ -19,6 +19,10 @@ application {
     mainClass.set("ru.ryadom.backend.ApplicationKt")
 }
 
+ktlint {
+    version.set(libs.versions.ktlint.cli)
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation(libs.ktor.server.core)
@@ -28,6 +32,8 @@ dependencies {
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.auth.jwt)
+    // Принудительная версия Jackson для зависимостей ktor-server-auth-jwt (см. libs.versions.toml).
+    implementation(platform(libs.jackson.bom))
     implementation(libs.ktor.serialization.kotlinx.json)
     // HTTP-клиент — для запросов к Яндекс ID.
     implementation(libs.ktor.client.core)

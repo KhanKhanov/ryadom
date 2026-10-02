@@ -8,6 +8,12 @@ ktor = "3.6.0"
 kotlinx-serialization = "1.11.0"
 logback = "1.6.5"
 ktlint-gradle = "14.2.0"
+# Версия самого ktlint (плагин ktlint-gradle по умолчанию берёт старую, с уязвимым logback).
+ktlint-cli = "1.8.0"
+# Jackson не используется нами напрямую: его тянут java-jwt и jwks-rsa (ktor-server-auth-jwt)
+# для разбора JWT из запросов. Версия поднята принудительно из-за уязвимостей в 2.22.0–2.22.2
+# (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89, GHSA-cxp5-3px4-pw24, GHSA-wv8q-qhhj-9h54 и др.).
+jackson = "2.22.3"
 
 # Backend: база данных и конфиг
 exposed = "1.5.0"
@@ -50,6 +56,7 @@ ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
 typesafe-config = { module = "com.typesafe:config", version.ref = "typesafe-config" }
 
 exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }

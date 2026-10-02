@@ -82,27 +82,29 @@ sequenceDiagram
 ## 5. Модель данных
 
 Данные о здоровье и инвалидности не собираются. Роль выбирает сам пользователь.
+Схема создаётся миграциями Flyway (`backend/src/main/resources/db/migration`) по этапам: на этапе 1 — `users`, `auth_identities`, `refresh_tokens`; остальные таблицы — в этапах, где они нужны.
 
 | Таблица | Основные поля |
 |---|---|
-| `users` | id, role (`blind`/`volunteer`/`admin`), display_name, languages[], gender (необязательно), gender_preference (для незрячего), timezone, dnd_from, dnd_to, notifications_enabled, banned_at, created_at |
+| `users` | id, role (`blind`/`volunteer`/`admin`; NULL — ещё не выбрана), display_name, languages[], gender (необязательно), gender_preference (для незрячего), timezone, dnd_from, dnd_to, notifications_enabled, banned_at, created_at |
 | `auth_identities` | id, user_id, provider (`yandex`/`vk`/`dev`), subject, created_at |
 | `devices` | id, user_id, push_provider (`fcm`/`rustore`/`webpush`/`apns`/`apns_voip`), token, platform, updated_at |
 | `help_requests` | id, blind_user_id, language, gender_preference, status (`searching`/`accepted`/`in_call`/`ended`/`no_answer`/`cancelled`), accepted_by, created_at, accepted_at, ended_at |
 | `request_notifications` | request_id, volunteer_id, wave, sent_at, result (`accepted`/`too_late`/`ignored`) |
 | `ratings` | request_id, from_user_id, score (1–5 или «помогло/не помогло»), comment |
 | `reports` | id, request_id, from_user_id, against_user_id, reason, text, status, resolved_by, created_at |
-| `refresh_tokens` | id, user_id, hash, expires_at, revoked_at |
+| `refresh_tokens` | id, user_id, token_hash (SHA-256, сам токен не хранится), created_at, expires_at, revoked_at |
 
 ## 6. API (кратко; полная версия — `docs/api/openapi.yaml`)
 
-REST, JSON, авторизация по JWT (access 15 мин + refresh).
+REST, JSON, авторизация по JWT (access 15 мин + refresh 90 дней с ротацией: повторное использование старого refresh-токена отзывает все сессии пользователя). Ошибки — в едином формате `{code, message}`: клиент показывает текст по `code` из своих ресурсов.
 
 | Метод | Путь | Назначение |
 |---|---|---|
 | POST | `/auth/oauth/{provider}` | Вход через Яндекс ID / VK ID |
 | POST | `/auth/dev` | Вход без OAuth — только в dev-окружении |
-| POST | `/auth/refresh` | Обновление токена |
+| POST | `/auth/refresh` | Обновление пары токенов (старый refresh-токен становится недействительным) |
+| POST | `/auth/logout` | Выход на устройстве (отзыв refresh-токена) |
 | GET / PATCH | `/me` | Профиль, роль, языки, пол, окно «не беспокоить» |
 | POST | `/devices` | Регистрация push-токена |
 | POST | `/requests` | Незрячий просит помощи |
@@ -151,6 +153,8 @@ WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `re
 - Не храним: видео, аудио, данные о здоровье, точную геолокацию.
 - Логи без персональных данных (только id).
 - Токены LiveKit выдаются на одну комнату и живут не дольше 2 часов.
+- Вход через Яндекс ID: веб получает код авторизации (с PKCE) и передаёт его серверу, сервер сам обменивает код на токен Яндекса. Android получает токен через Яндекс LoginSDK, сервер проверяет по `login.yandex.ru/info`, что токен выдан нашему `client_id` (иначе подошёл бы токен любого сайта с входом через Яндекс). От Яндекса сохраняются только id пользователя и имя; токены Яндекса не хранятся.
+- Вход без OAuth (`POST /auth/dev`) включается только переменной `AUTH_DEV_ENABLED=true` — для разработки и тестов.
 - Секреты — только в переменных окружения и секретах CI, никогда в репозитории.
 - При регистрации — согласие на обработку ПДн и ссылка на политику.
 
@@ -208,7 +212,7 @@ WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `re
 ## 14. Открытые вопросы
 
 - ~~Лицензия~~ — решено на этапе 0: GNU AGPL-3.0 (или более поздняя версия) для всего репозитория. Следствия: в веб-приложении нужна ссылка на исходный код (раздел 13 AGPL); AGPL плохо совместима с условиями App Store — до этапа 11 решить, добавлять ли исключение для App Store (проще сделать, пока у кода один автор).
-- Условия подключения Яндекс ID, VK ID и RuStore для физлица — проверить до этапов 1 и 7.
+- Яндекс ID: сервер готов (этап 1), осталось зарегистрировать приложение на oauth.yandex.ru (тип «для авторизации пользователей», доступ `login:info`) и проверить условия для физлица. VK ID и RuStore — проверить до этапа 7.
 - Нужно ли уведомление в РКН до появления юрлица и кто будет оператором ПДн.
 - Название и домен.
 - iOS: нужен Mac для сборки и аккаунт Apple Developer (99 $ в год); способ оплаты из России решить до этапа 11.

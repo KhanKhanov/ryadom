@@ -1,17 +1,37 @@
 openapi: 3.1.0
 info:
   title: Рядом API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     REST API сервиса видеопомощи незрячим «Рядом».
     Контракт меняется здесь в первую очередь, затем — код сервера и клиентов.
     Модели API продублированы в модуле `shared` (Kotlin Multiplatform).
+
+    Авторизация: после входа клиент получает короткий access-токен (JWT, 15 минут)
+    и долгий refresh-токен. Access-токен передаётся в заголовке `Authorization: Bearer <токен>`.
+    Когда он истекает (ответ 401 `unauthorized`), клиент вызывает `POST /auth/refresh`
+    и получает новую пару токенов; старый refresh-токен после этого недействителен.
+    Повторное использование старого refresh-токена считается признаком кражи:
+    сервер отзывает все refresh-токены пользователя, и нужно войти заново.
+    Поэтому клиент не должен обновлять токены в нескольких запросах одновременно.
+
+    Ошибки всегда возвращаются в формате `Error`. Поле `code` предназначено для программ
+    (клиент показывает по нему текст из своих ресурсов), `message` — только для разработчиков.
   license:
     name: AGPL-3.0-or-later
     identifier: AGPL-3.0-or-later
 servers:
   - url: http://localhost:8080
     description: Локальная разработка
+security:
+  - bearerAuth: []
+tags:
+  - name: service
+    description: Служебные методы
+  - name: auth
+    description: Вход и токены
+  - name: profile
+    description: Профиль текущего пользователя
 paths:
   /health:
     get:
@@ -27,7 +47,216 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+  /auth/dev:
+    post:
+      operationId: loginDev
+      summary: Вход без OAuth (только для разработки)
+      description: |
+        Работает, только если на сервере включено `AUTH_DEV_ENABLED=true`
+        (локальная разработка и тесты). На боевом сервере всегда отвечает 404.
+        Пользователь с таким логином создаётся при первом входе.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevLoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthSuccess'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /auth/oauth/{provider}:
+    post:
+      operationId: loginOAuth
+      summary: Вход через внешнего провайдера (Яндекс ID)
+      description: |
+        Два способа, передаётся ровно одно из полей:
+
+        - `code` — код авторизации из браузера (веб). Если при получении кода использовался PKCE,
+          вместе с ним передаётся `codeVerifier`. Сервер сам обменивает код на токен провайдера.
+        - `accessToken` — токен провайдера, полученный мобильным SDK (Яндекс LoginSDK на Android).
+          Сервер проверяет, что токен выдан именно нашему приложению.
+
+        Пользователь создаётся при первом входе. От провайдера сохраняется только его
+        идентификатор пользователя и, если доступно, имя — как начальное `displayName`.
+      tags: [auth]
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Провайдер входа. VK ID появится на этапе 7.
+          schema:
+            type: string
+            enum: [yandex]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthLoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthSuccess'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          description: Провайдер отклонил код или токен, либо токен выдан другому приложению (`oauth_failed`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+        '404':
+          description: Провайдер неизвестен или не настроен на этом сервере (`not_found`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Провайдер недоступен или ответил ошибкой (`provider_unavailable`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/refresh:
+    post:
+      operationId: refreshTokens
+      summary: Обновление пары токенов
+      description: |
+        Выдаёт новый access-токен и новый refresh-токен. Переданный refresh-токен
+        становится недействительным.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthSuccess'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          description: Refresh-токен неизвестен, истёк или уже использован (`invalid_refresh_token`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Выход на этом устройстве
+      description: |
+        Отзывает переданный refresh-токен. Отвечает 204, даже если токен уже недействителен.
+        Access-токен продолжает работать до истечения срока (до 15 минут) — клиент просто удаляет его.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '204':
+          description: Готово
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+  /me:
+    get:
+      operationId: getMe
+      summary: Профиль текущего пользователя
+      tags: [profile]
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+    patch:
+      operationId: updateMe
+      summary: Изменение профиля
+      description: |
+        Меняются только переданные поля, остальные остаются как были.
+        Роль `admin` так не назначить, а администратор не может сменить свою роль (403 `forbidden`).
+      tags: [profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Profile'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Пользователь заблокирован (`user_banned`) или смена роли запрещена (`forbidden`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access-токен из ответа `/auth/*`. Живёт 15 минут.
+  responses:
+    AuthSuccess:
+      description: Вход выполнен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthResponse'
+    Profile:
+      description: Профиль пользователя
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserProfile'
+    InvalidRequest:
+      description: Некорректное тело запроса (`invalid_request`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Нет access-токена, он неверный или истёк (`unauthorized`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UserBanned:
+      description: Пользователь заблокирован (`user_banned`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Не найдено (`not_found`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     HealthResponse:
       type: object
@@ -36,3 +265,196 @@ components:
         status:
           type: string
           enum: [ok]
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: |
+            Машинный код ошибки. Новые коды могут добавляться — клиент должен уметь
+            показать общее сообщение для неизвестного кода.
+          enum:
+            - invalid_request
+            - unauthorized
+            - invalid_refresh_token
+            - oauth_failed
+            - user_banned
+            - forbidden
+            - not_found
+            - provider_unavailable
+            - internal_error
+        message:
+          type: string
+          description: Пояснение для разработчика, на английском. Пользователю не показывается.
+    DevLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [login]
+      properties:
+        login:
+          type: string
+          description: Любой логин для разработки, например `volunteer-1`.
+          pattern: '^[a-z0-9_-]{1,32}$'
+    OAuthLoginRequest:
+      type: object
+      additionalProperties: false
+      description: Передаётся ровно одно из полей `code` или `accessToken`.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          description: Код авторизации, полученный в браузере (веб).
+        codeVerifier:
+          type: string
+          minLength: 43
+          maxLength: 128
+          description: PKCE code_verifier — если код получен с code_challenge.
+        accessToken:
+          type: string
+          minLength: 1
+          description: Токен провайдера, полученный мобильным SDK.
+      oneOf:
+        - required: [code]
+        - required: [accessToken]
+    RefreshTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+    AuthResponse:
+      type: object
+      required: [accessToken, accessTokenExpiresIn, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+          description: 'JWT для заголовка `Authorization: Bearer <токен>`.'
+        accessTokenExpiresIn:
+          type: integer
+          description: Через сколько секунд истечёт access-токен.
+          examples: [900]
+        refreshToken:
+          type: string
+          description: Храните в защищённом хранилище устройства. Живёт 90 дней, каждое обновление продлевает срок.
+        user:
+          $ref: '#/components/schemas/UserProfile'
+    Role:
+      type: string
+      description: |
+        `blind` — просит помощи, `volunteer` — помогает, `admin` — модератор
+        (назначается только вручную на сервере).
+      enum: [blind, volunteer, admin]
+    SelectableRole:
+      type: string
+      description: Роль, которую пользователь может выбрать сам.
+      enum: [blind, volunteer]
+    Language:
+      type: string
+      description: Язык общения, код ISO 639-1.
+      enum: [ru, en]
+    Gender:
+      type: string
+      description: Пол волонтёра — нужен, только если незрячий попросит помощника определённого пола.
+      enum: [male, female, unspecified]
+    GenderPreference:
+      type: string
+      description: Пожелание незрячего к полу волонтёра.
+      enum: [any, male, female]
+    LocalTime:
+      type: string
+      description: Время суток по часовому поясу пользователя, `ЧЧ:ММ`.
+      pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+      examples: ['22:00']
+    DoNotDisturb:
+      type: object
+      additionalProperties: false
+      description: |
+        Окно «не беспокоить» по местному времени: в это время волонтёру не приходят вызовы.
+        Может переходить через полночь (22:00–08:00). Если `from` равно `to`, окно пустое —
+        беспокоить можно в любое время.
+      required: [from, to]
+      properties:
+        from:
+          $ref: '#/components/schemas/LocalTime'
+        to:
+          $ref: '#/components/schemas/LocalTime'
+    UserProfile:
+      type: object
+      required:
+        - id
+        - role
+        - displayName
+        - languages
+        - gender
+        - genderPreference
+        - timezone
+        - doNotDisturb
+        - notificationsEnabled
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          description: '`null` — роль ещё не выбрана: клиент должен предложить выбрать её.'
+          oneOf:
+            - $ref: '#/components/schemas/Role'
+            - type: 'null'
+        displayName:
+          description: Имя, которое видит собеседник. `null` — ещё не задано.
+          type: [string, 'null']
+        languages:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Language'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        genderPreference:
+          $ref: '#/components/schemas/GenderPreference'
+        timezone:
+          type: string
+          description: Часовой пояс IANA.
+          examples: [Europe/Moscow]
+        doNotDisturb:
+          $ref: '#/components/schemas/DoNotDisturb'
+        notificationsEnabled:
+          type: boolean
+          description: Получать ли вызовы о помощи (для волонтёра).
+        createdAt:
+          type: string
+          format: date-time
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      description: Все поля необязательны; отсутствующее поле не меняется.
+      properties:
+        role:
+          $ref: '#/components/schemas/SelectableRole'
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Пробелы по краям обрезаются.
+        languages:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Language'
+        gender:
+          $ref: '#/components/schemas/Gender'
+        genderPreference:
+          $ref: '#/components/schemas/GenderPreference'
+        timezone:
+          type: string
+          description: Часовой пояс IANA.
+          examples: [Europe/Moscow]
+        doNotDisturb:
+          $ref: '#/components/schemas/DoNotDisturb'
+        notificationsEnabled:
+          type: boolean

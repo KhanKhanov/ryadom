@@ -11,8 +11,3 @@ data class HealthResponse(
         const val STATUS_OK = "ok"
     }
 }
-
-/** Пути REST API. Держим в одном месте, чтобы сервер и клиенты не расходились. */
-object ApiPaths {
-    const val HEALTH = "/health"
-}

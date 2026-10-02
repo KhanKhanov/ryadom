@@ -24,7 +24,7 @@
 - JDK 21 (подойдёт JDK из Android Studio; если JDK нет, Gradle скачает его сам)
 - Android SDK (ставится вместе с Android Studio) — для модулей `android` и `shared`
 - Node.js 24+ — для `web`
-- Docker — для локального окружения
+- Docker — для локального окружения и тестов backend
 
 ## Локальный запуск
 
@@ -41,6 +41,17 @@
    ./gradlew :backend:run
    ```
 
+   Сервер берёт настройки из того же `infra/.env` (нужны `POSTGRES_PASSWORD` и `JWT_SECRET`) и при старте сам применяет миграции базы.
+   Все настройки и их переменные окружения — в `backend/src/main/resources/application.conf`.
+
+   Войти без Яндекс ID (работает при `AUTH_DEV_ENABLED=true`) — ответ содержит `accessToken` для заголовка `Authorization: Bearer`:
+
+   ```bash
+   curl -X POST http://localhost:8080/auth/dev -H "Content-Type: application/json" -d '{"login":"volunteer-1"}'
+   ```
+
+   Вход через Яндекс ID включается переменными `YANDEX_CLIENT_ID` и `YANDEX_CLIENT_SECRET` (приложение регистрируется на <https://oauth.yandex.ru>).
+
 3. Веб:
 
    ```bash
@@ -50,6 +61,8 @@
 4. Android: откройте корень репозитория в Android Studio и запустите конфигурацию `android.app`.
 
 ## Тесты и линтеры
+
+Тесты backend поднимают настоящий PostgreSQL в Docker (Testcontainers), поэтому Docker должен быть запущен.
 
 ```bash
 ./gradlew ktlintCheck :backend:test :shared:jvmTest :android:app:lintDebug :android:app:testDebugUnitTest

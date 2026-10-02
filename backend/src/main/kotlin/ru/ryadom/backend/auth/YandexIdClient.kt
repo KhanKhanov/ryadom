@@ -57,7 +57,10 @@ class YandexIdClient(
             }
         val body = response.bodyAsText()
         return when (response.status) {
-            HttpStatusCode.OK -> parse<TokenResponse>(body).accessToken
+            HttpStatusCode.OK -> {
+                parse<TokenResponse>(body).accessToken
+            }
+
             HttpStatusCode.BadRequest -> {
                 val error = runCatching { parse<TokenError>(body).error }.getOrNull()
                 if (error == "invalid_client") {
@@ -68,6 +71,7 @@ class YandexIdClient(
                 log.info("Yandex rejected authorization code: {}", error)
                 throw oauthFailed("Authorization code was rejected by Yandex")
             }
+
             else -> {
                 log.warn("Yandex token endpoint answered {}", response.status.value)
                 throw providerUnavailable()
@@ -88,8 +92,12 @@ class YandexIdClient(
                 }
             }
         when (response.status) {
-            HttpStatusCode.OK -> Unit
-            HttpStatusCode.Unauthorized -> throw oauthFailed("Yandex token is invalid or expired")
+            HttpStatusCode.OK -> {}
+
+            HttpStatusCode.Unauthorized -> {
+                throw oauthFailed("Yandex token is invalid or expired")
+            }
+
             else -> {
                 log.warn("Yandex user info endpoint answered {}", response.status.value)
                 throw providerUnavailable()

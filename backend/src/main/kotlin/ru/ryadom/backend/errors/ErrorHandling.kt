@@ -31,6 +31,14 @@ class ApiException(
         fun notFound(message: String = "Not found") = ApiException(HttpStatusCode.NotFound, ApiErrorCodes.NOT_FOUND, message)
 
         fun userBanned() = ApiException(HttpStatusCode.Forbidden, ApiErrorCodes.USER_BANNED, "User is banned")
+
+        fun forbidden(message: String) = ApiException(HttpStatusCode.Forbidden, ApiErrorCodes.FORBIDDEN, message)
+
+        /** 409: действие противоречит текущему состоянию (например, запрос уже принят). */
+        fun conflict(
+            code: String,
+            message: String,
+        ) = ApiException(HttpStatusCode.Conflict, code, message)
     }
 }
 

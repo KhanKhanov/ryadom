@@ -4,3 +4,10 @@ docs/api/openapi.yaml:
   # /health только сообщает, что сервер жив: ошибок 4xx у него не бывает.
   operation-4xx-response:
     - '#/paths/~1health/get/responses'
+  # /ws открывает WebSocket: успешный ответ — 101 Switching Protocols, а не 2xx.
+  operation-2xx-response:
+    - '#/paths/~1ws/get/responses'
+  # Сообщение клиента в WebSocket указано в расширении x-client-message операции /ws:
+  # ссылки из расширений Redocly не считает использованием.
+  no-unused-components:
+    - '#/components/schemas/RealtimeClientMessage'

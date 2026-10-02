@@ -3,6 +3,8 @@ package ru.ryadom.backend.users
 import io.ktor.http.HttpStatusCode
 import ru.ryadom.backend.ProfileDefaults
 import ru.ryadom.backend.errors.ApiException
+import ru.ryadom.backend.requests.HelpRequestRepository
+import ru.ryadom.backend.toApiTime
 import ru.ryadom.shared.api.ApiErrorCodes
 import ru.ryadom.shared.api.DoNotDisturb
 import ru.ryadom.shared.api.Role
@@ -11,22 +13,30 @@ import ru.ryadom.shared.api.UserProfile
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import kotlin.uuid.Uuid
 
 /** Профиль текущего пользователя: чтение, проверка и сохранение изменений. */
 class ProfileService(
     private val users: UserRepository,
+    private val helpRequests: HelpRequestRepository,
     private val defaults: ProfileDefaults,
 ) {
-    suspend fun get(userId: Uuid): UserProfile = toProfile(activeUser(userId))
+    suspend fun get(userId: Uuid): UserProfile = toProfile(users.requireActiveUser(userId))
 
     suspend fun update(
         userId: Uuid,
         request: UpdateProfileRequest,
     ): UserProfile {
-        val changes = request.toChanges(activeUser(userId))
-        val updated = users.update(userId, changes) ?: throw unauthorized()
+        val current = users.requireActiveUser(userId)
+        val changes = request.toChanges(current)
+        // Смена роли посреди запроса или звонка запутала бы обе стороны: незрячий мог бы получить
+        // собственный вызов, а волонтёр в звонке — попросить помощи сам.
+        if (changes.role != null && changes.role != current.role && helpRequests.hasActiveRequestOrCall(userId)) {
+            throw ApiException.conflict(ApiErrorCodes.ACTIVE_REQUEST_EXISTS, "Role cannot be changed during a help request or call")
+        }
+        val updated =
+            users.update(userId, changes)
+                ?: throw ApiException(HttpStatusCode.Unauthorized, ApiErrorCodes.UNAUTHORIZED, "User not found")
         return toProfile(updated)
     }
 
@@ -42,18 +52,9 @@ class ProfileService(
             timezone = user.timezone,
             doNotDisturb = DoNotDisturb(from.format(TIME_FORMAT), to.format(TIME_FORMAT)),
             notificationsEnabled = user.notificationsEnabled,
-            createdAt = DateTimeFormatter.ISO_INSTANT.format(user.createdAt.truncatedTo(ChronoUnit.SECONDS)),
+            createdAt = user.createdAt.toApiTime(),
         )
     }
-
-    /** Пользователь из токена. Если его уже нет в базе — токен считается недействительным. */
-    private suspend fun activeUser(userId: Uuid): UserRecord {
-        val user = users.findById(userId) ?: throw unauthorized()
-        if (user.isBanned) throw ApiException.userBanned()
-        return user
-    }
-
-    private fun unauthorized() = ApiException(HttpStatusCode.Unauthorized, ApiErrorCodes.UNAUTHORIZED, "User not found")
 
     private companion object {
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")

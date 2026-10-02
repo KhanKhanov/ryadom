@@ -19,6 +19,8 @@ class AppConfigTest {
         mapOf(
             "POSTGRES_PASSWORD" to "db-password",
             "JWT_SECRET" to "s".repeat(32),
+            "LIVEKIT_API_KEY" to "livekit-key",
+            "LIVEKIT_API_SECRET" to "l".repeat(32),
         )
 
     /**
@@ -48,6 +50,46 @@ class AppConfigTest {
         assertEquals(ZoneId.of("Europe/Moscow"), config.profile.timezone)
         assertEquals(LocalTime.of(22, 0), config.profile.doNotDisturbFrom)
         assertEquals(LocalTime.of(8, 0), config.profile.doNotDisturbTo)
+    }
+
+    @Test
+    fun matchingDefaultsFollowArchitecture() {
+        val config = load(requiredEnv)
+
+        // docs/ARCHITECTURE.md, раздел 4: сразу 5 человек, далее каждые 10 секунд по 10, всего до 60 секунд.
+        with(config.matching) {
+            assertEquals(5, firstWaveSize)
+            assertEquals(10, nextWaveSize)
+            assertEquals(Duration.ofSeconds(10), waveInterval)
+            assertEquals(Duration.ofSeconds(60), searchTimeout)
+        }
+        assertEquals("ws://localhost:7880", config.liveKit.url)
+        assertEquals(Duration.ofHours(2), config.liveKit.tokenTtl)
+        assertEquals("livekit-key", config.liveKit.apiKey)
+    }
+
+    @Test
+    fun liveKitUrlCanBeSetFromEnvironment() {
+        val config = load(requiredEnv + ("LIVEKIT_URL" to "ws://192.168.1.10:7880"))
+
+        assertEquals("ws://192.168.1.10:7880", config.liveKit.url)
+    }
+
+    @Test
+    fun liveKitKeysAreRequired() {
+        val noKey = assertFailsWith<IllegalStateException> { load(requiredEnv - "LIVEKIT_API_KEY") }
+        assertContains(noKey.message.orEmpty(), "LIVEKIT_API_KEY")
+
+        val shortSecret = assertFailsWith<IllegalStateException> { load(requiredEnv + ("LIVEKIT_API_SECRET" to "short")) }
+        assertContains(shortSecret.message.orEmpty(), "LIVEKIT_API_SECRET")
+    }
+
+    @Test
+    fun liveKitUrlMustBeWebSocket() {
+        for (url in listOf("", "http://localhost:7880")) {
+            val error = assertFailsWith<IllegalStateException> { load(requiredEnv + ("LIVEKIT_URL" to url)) }
+            assertContains(error.message.orEmpty(), "LIVEKIT_URL")
+        }
     }
 
     @Test
@@ -104,5 +146,6 @@ class AppConfigTest {
         assertFalse("db-password" in printed)
         assertFalse("s".repeat(32) in printed)
         assertFalse("yandex-secret" in printed)
+        assertFalse("l".repeat(32) in printed)
     }
 }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Рядом API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     REST API сервиса видеопомощи незрячим «Рядом».
     Контракт меняется здесь в первую очередь, затем — код сервера и клиентов.
@@ -17,6 +17,12 @@ info:
 
     Ошибки всегда возвращаются в формате `Error`. Поле `code` предназначено для программ
     (клиент показывает по нему текст из своих ресурсов), `message` — только для разработчиков.
+
+    Звонок: незрячий создаёт запрос (`POST /requests`), сервер волнами уведомляет подходящих
+    волонтёров (событие `request.incoming` в WebSocket `/ws`), первый принявший
+    (`POST /requests/{requestId}/accept`) получает данные для входа в комнату LiveKit,
+    незрячий — их же в событии `request.accepted`. Видео и звук идут через LiveKit,
+    сервер API в них не участвует и звонки не записывает.
   license:
     name: AGPL-3.0-or-later
     identifier: AGPL-3.0-or-later
@@ -32,6 +38,12 @@ tags:
     description: Вход и токены
   - name: profile
     description: Профиль текущего пользователя
+  - name: requests
+    description: Запросы помощи и звонки
+  - name: realtime
+    description: События в реальном времени (WebSocket)
+  - name: webhooks
+    description: Уведомления от сервера LiveKit
 paths:
   /health:
     get:
@@ -193,6 +205,8 @@ paths:
       description: |
         Меняются только переданные поля, остальные остаются как были.
         Роль `admin` так не назначить, а администратор не может сменить свою роль (403 `forbidden`).
+        Роль нельзя сменить, пока у пользователя есть активный запрос помощи или идёт звонок
+        (409 `active_request_exists`); остальные поля менять можно.
       tags: [profile]
       requestBody:
         required: true
@@ -213,6 +227,261 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            Роль не сменить, пока есть активный запрос или идёт звонок (`active_request_exists`):
+            сначала нужно завершить их.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /requests:
+    post:
+      operationId: createHelpRequest
+      summary: Попросить помощи (незрячий)
+      description: |
+        Создаёт запрос и сразу начинает искать волонтёра. Первая волна уведомлений уходит сразу,
+        следующие — через равные промежутки времени; если за время поиска (около минуты)
+        никто не принял запрос, он переходит в статус `no_answer` и приходит событие
+        `request.no_answer`. Размеры волн и интервалы задаются в конфиге сервера.
+
+        Поля тела необязательны: по умолчанию берутся первый язык и пожелание по полу из профиля.
+        У пользователя может быть только один активный запрос (`searching`, `accepted`, `in_call`),
+        а число запросов за час ограничено.
+      tags: [requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHelpRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/HelpRequest'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Роль пользователя — не `blind` (`forbidden`) или пользователь заблокирован (`user_banned`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            Уже есть активный запрос (`active_request_exists`): его можно получить
+            через `GET /requests/current`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Слишком много запросов за последний час (`too_many_requests`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /requests/current:
+    get:
+      operationId: getCurrentHelpRequest
+      summary: Текущий активный запрос
+      description: |
+        Для незрячего — его запрос в статусе `searching`, `accepted` или `in_call`;
+        для волонтёра — принятый им запрос, звонок по которому ещё не завершён.
+        Нужен, чтобы восстановить состояние после перезапуска приложения.
+      tags: [requests]
+      responses:
+        '200':
+          $ref: '#/components/responses/HelpRequest'
+        '204':
+          description: Активного запроса нет
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+  /requests/{requestId}:
+    parameters:
+      - $ref: '#/components/parameters/RequestId'
+    get:
+      operationId: getHelpRequest
+      summary: Состояние запроса
+      description: |
+        Доступно незрячему, создавшему запрос, волонтёру, который его принял, и волонтёрам,
+        которым приходило уведомление о нём; остальным — 404.
+        Клиент вызывает этот метод после переподключения WebSocket, чтобы не пропустить изменения.
+      tags: [requests]
+      responses:
+        '200':
+          $ref: '#/components/responses/HelpRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: cancelHelpRequest
+      summary: Отменить запрос или завершить звонок (незрячий)
+      description: |
+        `searching` и `accepted` переходят в `cancelled`, `in_call` — в `ended`.
+        Уже закрытый запрос не меняется, поэтому повторный вызов безопасен.
+        Волонтёры, которых это касается, получают `request.cancelled` или `request.ended`.
+      tags: [requests]
+      responses:
+        '200':
+          $ref: '#/components/responses/HelpRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Запрос создал другой пользователь (`forbidden`) или пользователь заблокирован (`user_banned`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /requests/{requestId}/accept:
+    parameters:
+      - $ref: '#/components/parameters/RequestId'
+    post:
+      operationId: acceptHelpRequest
+      summary: Принять запрос (волонтёр)
+      description: |
+        Побеждает первый принявший. Он получает в ответе данные для входа в звонок (`call`),
+        незрячий — событие `request.accepted`, остальные уведомлённые волонтёры — `request.taken`.
+        Повторный вызов тем же волонтёром возвращает тот же результат.
+        Принять можно только запрос, о котором волонтёру приходило уведомление (иначе 404).
+      tags: [requests]
+      responses:
+        '200':
+          $ref: '#/components/responses/HelpRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Роль пользователя — не `volunteer` (`forbidden`) или пользователь заблокирован (`user_banned`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Запрос уже принял другой волонтёр (`request_taken`), запрос закрыт (`request_closed`)
+            или у волонтёра уже идёт другой звонок (`active_request_exists`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /requests/{requestId}/rating:
+    parameters:
+      - $ref: '#/components/parameters/RequestId'
+    post:
+      operationId: rateHelpRequest
+      summary: Оценить звонок
+      description: |
+        Оценивают оба участника: помог ли звонок. Повторная оценка заменяет предыдущую.
+        Оценить можно запрос, который принял волонтёр.
+      tags: [requests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rating'
+      responses:
+        '204':
+          description: Оценка сохранена
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Звонка не было — запрос никто не принял (`call_not_started`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /ws:
+    get:
+      operationId: connectRealtime
+      summary: События в реальном времени (WebSocket)
+      description: |
+        WebSocket-соединение для событий о запросах. Браузер не умеет передавать заголовок
+        `Authorization` при открытии WebSocket, поэтому вход выполняется первым сообщением:
+
+        1. Клиент открывает `ws(s)://<сервер>/ws` и сразу (не позже чем через 10 секунд)
+           отправляет `{"type":"auth","accessToken":"<access-токен>"}`.
+        2. Сервер отвечает `{"type":"ready"}` — с этого момента приходят события.
+        3. Access-токен живёт 15 минут. Чтобы соединение не закрылось, после обновления токенов
+           клиент отправляет в то же соединение новое сообщение `auth` (токен того же пользователя).
+
+        Сообщения — текстовые кадры JSON: от клиента — `RealtimeClientMessage`,
+        от сервера — `RealtimeServerMessage`. Клиент должен игнорировать сообщения
+        неизвестного типа: в новых версиях сервера могут появиться новые события.
+
+        Коды закрытия соединения сервером:
+
+        - `4401` — нет входа, токен неверный или истёк: обновите токены и подключитесь снова;
+        - `4403` — пользователь заблокирован.
+
+        Волонтёр получает вызовы, пока соединение открыто и в профиле включено
+        `notificationsEnabled` (push-уведомления появятся позже). События, произошедшие без
+        соединения, не повторяются: после переподключения клиент узнаёт актуальное состояние
+        через `GET /requests/current` или `GET /requests/{requestId}`.
+      tags: [realtime]
+      # Вход — первым сообщением в соединении, а не заголовком (см. описание).
+      security: []
+      # OpenAPI не умеет описывать сообщения внутри WebSocket. Сообщения клиента указаны в расширении,
+      # сообщения сервера — в ответе 101.
+      x-client-message:
+        $ref: '#/components/schemas/RealtimeClientMessage'
+      responses:
+        '101':
+          description: Соединение установлено. Сообщения сервера — `RealtimeServerMessage`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeServerMessage'
+        '400':
+          description: Запрос не является открытием WebSocket (`invalid_request`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /webhooks/livekit:
+    post:
+      operationId: receiveLiveKitWebhook
+      summary: События комнат от LiveKit
+      description: |
+        Вызывает сервер LiveKit (настройка `webhook` в `infra/livekit/livekit.yaml`), а не клиенты.
+        Подпись проверяется по заголовку `Authorization`: это JWT, подписанный секретом API LiveKit,
+        с SHA-256 тела запроса. Используются события `participant_joined` (звонок начался)
+        и `room_finished` (все вышли из комнаты — звонок завершён); остальные игнорируются.
+        Комната называется по id запроса.
+      tags: [webhooks]
+      security:
+        - liveKitWebhook: []
+      requestBody:
+        required: true
+        content:
+          application/webhook+json:
+            schema:
+              $ref: '#/components/schemas/LiveKitWebhookEvent'
+      responses:
+        '204':
+          description: Событие принято
+        '401':
+          description: Подпись неверна (`unauthorized`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     bearerAuth:
@@ -220,7 +489,29 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Access-токен из ответа `/auth/*`. Живёт 15 минут.
+    liveKitWebhook:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Только для `POST /webhooks/livekit`: JWT, который сервер LiveKit подписывает секретом API.
+        В нём SHA-256 тела запроса — так сервер проверяет, что событие отправил наш LiveKit.
+  parameters:
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      description: id запроса помощи.
+      schema:
+        type: string
+        format: uuid
   responses:
+    HelpRequest:
+      description: Запрос помощи
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HelpRequest'
     AuthSuccess:
       description: Вход выполнен
       content:
@@ -283,6 +574,11 @@ components:
             - forbidden
             - not_found
             - provider_unavailable
+            - active_request_exists
+            - request_taken
+            - request_closed
+            - call_not_started
+            - too_many_requests
             - internal_error
         message:
           type: string
@@ -458,3 +754,154 @@ components:
           $ref: '#/components/schemas/DoNotDisturb'
         notificationsEnabled:
           type: boolean
+    RequestStatus:
+      type: string
+      description: |
+        - `searching` — ищем волонтёра;
+        - `accepted` — волонтёр принял запрос, участники подключаются к звонку;
+        - `in_call` — звонок идёт;
+        - `ended` — звонок завершён;
+        - `no_answer` — за время поиска никто не принял запрос;
+        - `cancelled` — незрячий отменил запрос до начала звонка.
+
+        Активные статусы — `searching`, `accepted`, `in_call`; остальные окончательные.
+      enum: [searching, accepted, in_call, ended, no_answer, cancelled]
+    CreateHelpRequest:
+      type: object
+      additionalProperties: false
+      description: Все поля необязательны, можно передать пустой объект `{}`.
+      properties:
+        language:
+          $ref: '#/components/schemas/Language'
+        genderPreference:
+          $ref: '#/components/schemas/GenderPreference'
+    HelpRequest:
+      type: object
+      required: [id, status, language, genderPreference, createdAt, acceptedAt, endedAt, call]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RequestStatus'
+        language:
+          $ref: '#/components/schemas/Language'
+        genderPreference:
+          $ref: '#/components/schemas/GenderPreference'
+        createdAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          description: Когда волонтёр принял запрос. `null` — ещё не принят.
+          type: [string, 'null']
+          format: date-time
+        endedAt:
+          description: Когда запрос закрыт (звонок завершён, отменён или никто не ответил).
+          type: [string, 'null']
+          format: date-time
+        call:
+          description: |
+            Данные для входа в звонок. Заполнено только для участников звонка
+            (незрячего и принявшего волонтёра), пока статус `accepted` или `in_call`.
+          oneOf:
+            - $ref: '#/components/schemas/CallCredentials'
+            - type: 'null'
+    CallCredentials:
+      type: object
+      description: Передаётся в SDK LiveKit для подключения к комнате звонка.
+      required: [url, room, token]
+      properties:
+        url:
+          type: string
+          description: Адрес сервера LiveKit (`ws://` или `wss://`).
+          examples: ['ws://localhost:7880']
+        room:
+          type: string
+          description: Имя комнаты — совпадает с id запроса.
+        token:
+          type: string
+          description: |
+            Токен LiveKit для этой комнаты и этого участника, живёт не дольше 2 часов.
+            Незрячий может публиковать камеру и микрофон, волонтёр — только микрофон;
+            оба могут отправлять данные (команды фонарика).
+    Rating:
+      type: object
+      additionalProperties: false
+      required: [helped]
+      properties:
+        helped:
+          type: boolean
+          description: Помог ли звонок.
+    RealtimeClientMessage:
+      type: object
+      additionalProperties: false
+      description: |
+        Сообщение клиента в WebSocket `/ws`. Пока оно одно — `auth`, вход: первое сообщение
+        после открытия соединения. Повторяется с новым токеном после каждого обновления токенов,
+        чтобы соединение не закрылось.
+      required: [type, accessToken]
+      properties:
+        type:
+          type: string
+          const: auth
+        accessToken:
+          type: string
+          description: Access-токен из ответа `/auth/*`.
+    RealtimeServerMessage:
+      description: Сообщение сервера в WebSocket `/ws`. Вид сообщения — в поле `type`.
+      oneOf:
+        - $ref: '#/components/schemas/RealtimeReadyEvent'
+        - $ref: '#/components/schemas/RealtimeRequestEvent'
+    RealtimeReadyEvent:
+      type: object
+      description: Вход выполнен, соединение готово получать события.
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: ready
+    RealtimeRequestEvent:
+      type: object
+      description: Изменился запрос помощи; `request` — его актуальное состояние.
+      required: [type, request]
+      properties:
+        type:
+          type: string
+          description: |
+            - `request.incoming` (волонтёру) — новый запрос, его можно принять;
+            - `request.accepted` (незрячему) — волонтёр принял запрос, в `request.call` данные для звонка;
+            - `request.taken` (волонтёру) — запрос уже принял другой волонтёр;
+            - `request.cancelled` (волонтёру) — незрячий отменил запрос;
+            - `request.no_answer` (незрячему и уведомлённым волонтёрам) — никто не принял запрос;
+            - `request.ended` (участникам звонка) — звонок завершён.
+          enum:
+            - request.incoming
+            - request.accepted
+            - request.taken
+            - request.cancelled
+            - request.no_answer
+            - request.ended
+        request:
+          $ref: '#/components/schemas/HelpRequest'
+    LiveKitWebhookEvent:
+      type: object
+      description: |
+        Событие LiveKit (формат задаёт LiveKit, здесь — только поля, которые использует сервер).
+        Неизвестные поля игнорируются.
+      required: [event]
+      properties:
+        event:
+          type: string
+          examples: [room_finished]
+        id:
+          type: string
+        room:
+          type: object
+          properties:
+            name:
+              type: string
+        participant:
+          type: object
+          properties:
+            identity:
+              type: string

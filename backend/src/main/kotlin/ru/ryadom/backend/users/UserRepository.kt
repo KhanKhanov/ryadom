@@ -1,8 +1,11 @@
 package ru.ryadom.backend.users
 
+import io.ktor.http.HttpStatusCode
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.jetbrains.exposed.v1.jdbc.JdbcTransaction
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -11,8 +14,16 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import ru.ryadom.backend.db.AppDatabase
 import ru.ryadom.backend.db.AuthIdentitiesTable
+import ru.ryadom.backend.db.UNIQUE_VIOLATION
 import ru.ryadom.backend.db.UsersTable
+import ru.ryadom.backend.db.dbValue
+import ru.ryadom.backend.db.genderFromDb
+import ru.ryadom.backend.db.genderPreferenceFromDb
+import ru.ryadom.backend.db.languageFromDb
+import ru.ryadom.backend.db.roleFromDb
 import ru.ryadom.backend.db.toDb
+import ru.ryadom.backend.errors.ApiException
+import ru.ryadom.shared.api.ApiErrorCodes
 import ru.ryadom.shared.api.Gender
 import ru.ryadom.shared.api.GenderPreference
 import ru.ryadom.shared.api.Language
@@ -70,6 +81,24 @@ class UserRepository(
     private val db: AppDatabase,
 ) {
     suspend fun findById(id: Uuid): UserRecord? = db.query { findUser(id) }
+
+    /**
+     * Волонтёры из [ids], которым сейчас можно отправить вызов: роль `volunteer`, не заблокированы,
+     * вызовы включены. Остальные правила подбора — в `requests.VolunteerMatcher`.
+     */
+    suspend fun findAvailableVolunteers(ids: Collection<Uuid>): List<UserRecord> {
+        if (ids.isEmpty()) return emptyList()
+        return db.query {
+            UsersTable
+                .selectAll()
+                .where {
+                    (UsersTable.id inList ids) and
+                        (UsersTable.role eq Role.VOLUNTEER.dbValue) and
+                        UsersTable.bannedAt.isNull() and
+                        (UsersTable.notificationsEnabled eq true)
+                }.map { it.toUserRecord() }
+        }
+    }
 
     /**
      * Находит пользователя по способу входа или создаёт нового.
@@ -155,34 +184,28 @@ class UserRepository(
                 ?: return null
         return findUser(userId)
     }
-
-    private companion object {
-        /** Код ошибки PostgreSQL «нарушение уникальности». */
-        const val UNIQUE_VIOLATION = "23505"
-    }
 }
 
-// Перевод значений между Kotlin и базой. В базе — те же строки, что в API (`blind`, `ru`, `male`),
-// а «не указано» хранится как NULL.
-
-private val Role.dbValue: String get() = name.lowercase()
-private val Language.dbValue: String get() = name.lowercase()
-
-private fun Gender.toDb(): String? = if (this == Gender.UNSPECIFIED) null else name.lowercase()
-
-private fun GenderPreference.toDb(): String? = if (this == GenderPreference.ANY) null else name.lowercase()
+/**
+ * Пользователь из access-токена, которому разрешено работать с API.
+ * Если его уже нет в базе — токен считается недействительным (401); заблокированному — 403.
+ */
+suspend fun UserRepository.requireActiveUser(userId: Uuid): UserRecord {
+    val user = findById(userId) ?: throw ApiException(HttpStatusCode.Unauthorized, ApiErrorCodes.UNAUTHORIZED, "User not found")
+    if (user.isBanned) throw ApiException.userBanned()
+    return user
+}
 
 private fun ResultRow.toUserRecord(): UserRecord {
     val from = this[UsersTable.dndFrom]
     val to = this[UsersTable.dndTo]
     return UserRecord(
         id = this[UsersTable.id],
-        role = this[UsersTable.role]?.let { Role.valueOf(it.uppercase()) },
+        role = roleFromDb(this[UsersTable.role]),
         displayName = this[UsersTable.displayName],
-        languages = this[UsersTable.languages].map { Language.valueOf(it.uppercase()) },
-        gender = this[UsersTable.gender]?.let { Gender.valueOf(it.uppercase()) } ?: Gender.UNSPECIFIED,
-        genderPreference =
-            this[UsersTable.genderPreference]?.let { GenderPreference.valueOf(it.uppercase()) } ?: GenderPreference.ANY,
+        languages = this[UsersTable.languages].map { languageFromDb(it) },
+        gender = genderFromDb(this[UsersTable.gender]),
+        genderPreference = genderPreferenceFromDb(this[UsersTable.genderPreference]),
         timezone = this[UsersTable.timezone],
         doNotDisturb = if (from != null && to != null) from to to else null,
         notificationsEnabled = this[UsersTable.notificationsEnabled],

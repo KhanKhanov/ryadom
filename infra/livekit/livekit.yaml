@@ -9,5 +9,11 @@ rtc:
   # Локально адрес для клиентов задаёт переменная NODE_IP (см. docker-compose.yml);
   # на сервере (этап 9) включается use_external_ip.
   use_external_ip: false
+# События комнат (участник вошёл, комната закрыта) — в backend: по ним он узнаёт, что звонок начался и закончился.
+# Ключ, которым LiveKit подписывает события, задаёт переменная LIVEKIT_WEBHOOK_API_KEY (см. docker-compose.yml).
+webhook:
+  urls:
+    # Backend, запущенный на этом компьютере (./gradlew :backend:run).
+    - http://host.docker.internal:8080/webhooks/livekit
 logging:
   level: info

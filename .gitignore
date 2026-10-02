@@ -1,0 +1,32 @@
+# Секреты
+.env
+*.jks
+*.keystore
+local.properties
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Локальные настройки Claude Code (содержат пути конкретного компьютера)
+.claude/launch.json
+.claude/settings.local.json
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Android
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Web
+node_modules/
+web/dist/
+web/coverage/
+*.tsbuildinfo

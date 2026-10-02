@@ -1,0 +1,38 @@
+openapi: 3.1.0
+info:
+  title: Рядом API
+  version: 0.1.0
+  description: |
+    REST API сервиса видеопомощи незрячим «Рядом».
+    Контракт меняется здесь в первую очередь, затем — код сервера и клиентов.
+    Модели API продублированы в модуле `shared` (Kotlin Multiplatform).
+  license:
+    name: AGPL-3.0-or-later
+    identifier: AGPL-3.0-or-later
+servers:
+  - url: http://localhost:8080
+    description: Локальная разработка
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Проверка, что сервер работает
+      tags: [service]
+      # Доступно без входа: используется для проверки, что сервер жив.
+      security: []
+      responses:
+        '200':
+          description: Сервер работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]

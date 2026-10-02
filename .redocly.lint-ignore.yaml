@@ -1,0 +1,6 @@
+# Осознанные исключения из правил проверки контракта (Redocly CLI, настройки — redocly.yaml).
+# Каждое исключение — одно конкретное место в openapi.yaml; правило для остальных мест продолжает работать.
+docs/api/openapi.yaml:
+  # /health только сообщает, что сервер жив: ошибок 4xx у него не бывает.
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'

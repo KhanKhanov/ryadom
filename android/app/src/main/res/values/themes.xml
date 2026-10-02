@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Тема окна: видна до того, как Compose нарисует экран.
+  Светлая здесь и тёмная в values-night — как тема Compose (RyadomTheme), чтобы при запуске не было вспышки.
+-->
+<resources>
+    <style name="Theme.Ryadom" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

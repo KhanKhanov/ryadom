@@ -1,0 +1,13 @@
+# Проверка контракта API (docs/api/openapi.yaml) через Redocly CLI.
+# Как запустить — README, раздел «Тесты и линтеры». Точечные исключения — в .redocly.lint-ignore.yaml.
+apis:
+  ryadom:
+    root: docs/api/openapi.yaml
+
+# Строгий набор: любое нарушение рекомендаций — ошибка, CI падает.
+extends:
+  - recommended-strict
+
+rules:
+  # В контракте пока только локальный сервер разработки; боевой адрес появится на этапе 9.
+  no-server-example.com: off

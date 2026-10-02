@@ -1,0 +1,38 @@
+# Граф зависимостей Gradle для GitHub: по нему Dependabot сообщает об уязвимостях
+# (вкладка Security and quality). Запускается после каждого push в main.
+#
+# В граф попадает только то, что получают пользователи: сервер, APK для Android и модуль shared для iPhone.
+# Инструменты сборки (плагины Gradle, Android Lint, ktlint) и тестовые библиотеки не попадают:
+# они работают только у разработчика и в CI, а их уязвимости давали десятки ложных предупреждений.
+# Зависимости веба (web/package-lock.json) GitHub находит сам, без этого workflow.
+#
+# Этот workflow заменяет автоматическую выгрузку GitHub: в Settings → Advanced Security
+# пункт «Automatic dependency submission» должен быть выключен, иначе граф выгружается дважды и без фильтра.
+name: Граф зависимостей
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  # Нужно, чтобы отправить граф зависимостей в GitHub.
+  contents: write
+
+jobs:
+  dependency-submission:
+    name: Зависимости Gradle для Dependabot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/dependency-submission@v6
+        with:
+          # Конфигурации Gradle, зависимости которых попадают к пользователям:
+          # runtimeClasspath — backend, releaseRuntimeClasspath — android/app (release APK),
+          # iosArm64CompileKlibraries — shared для iPhone.
+          # Появится новый модуль, который попадает к пользователям, — добавьте его конфигурацию сюда.
+          dependency-graph-include-configurations: '^(runtimeClasspath|releaseRuntimeClasspath|iosArm64CompileKlibraries)$'

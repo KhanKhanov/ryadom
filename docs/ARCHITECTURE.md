@@ -175,6 +175,7 @@ WebSocket `/ws` — события: `request.accepted`, `request.no_answer`, `re
 
 - На каждый PR: тесты и линтеры backend (Gradle), Android (lint, unit, проверки доступности), web (lint, тесты).
 - На merge в `main`: подписанный APK как артефакт сборки (ключ — в секретах), Docker-образы в Yandex Container Registry, деплой на ВМ по SSH (`docker compose pull && up -d`).
+- На merge в `main`: граф зависимостей Gradle для Dependabot (`.github/workflows/dependency-graph.yml`) — только то, что получают пользователи (backend, release APK, shared для iOS), без инструментов сборки и тестов. Автоматическая выгрузка GitHub («Automatic dependency submission») выключена. Dependabot только сообщает об уязвимостях; транзитивные зависимости Gradle исправляются вручную через BOM или ограничения версий в `libs.versions.toml`.
 - Зеркалирование репозитория на GitFlic/GitVerse.
 
 ## 12. Тестирование

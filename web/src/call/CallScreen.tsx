@@ -4,6 +4,7 @@ import { format, type StringKey } from '../i18n'
 import { Button, ErrorMessage, ScreenHeading } from '../ui/components'
 import { useAnnounce, useServices, useStrings } from '../ui/context'
 import { errorKey } from '../ui/errorText'
+import { useLatest } from '../ui/hooks'
 import { callStatusKey, initialCallState, type CallSession, type CallState } from './call'
 
 type CallScreenProps = {
@@ -18,6 +19,8 @@ type CallScreenProps = {
   onEnd(): Promise<void>
   /** Звонок уже закрыт на сервере (выяснилось при попытке переподключиться). */
   onClosed(request: HelpRequest): void
+  /** Собеседник появился в звонке — разговор состоялся. */
+  onRemoteJoined?(): void
 }
 
 /**
@@ -25,7 +28,7 @@ type CallScreenProps = {
  * отключается. О завершении звонка собеседником сообщает сервер (событие request.ended),
  * и родительский экран убирает этот.
  */
-export function CallScreen({ requestId, credentials: initialCredentials, mode, onEnd, onClosed }: CallScreenProps) {
+export function CallScreen({ requestId, credentials: initialCredentials, mode, onEnd, onClosed, onRemoteJoined }: CallScreenProps) {
   const t = useStrings()
   const announce = useAnnounce()
   const { api, createCall } = useServices()
@@ -36,6 +39,7 @@ export function CallScreen({ requestId, credentials: initialCredentials, mode, o
   const session = useRef<CallSession | null>(null)
   const remoteVideo = useRef<HTMLVideoElement>(null)
   const localVideo = useRef<HTMLVideoElement>(null)
+  const latestOnRemoteJoined = useLatest(onRemoteJoined)
 
   // Новые данные для входа (после «Подключиться снова») — новое подключение.
   useEffect(() => {
@@ -57,6 +61,11 @@ export function CallScreen({ requestId, credentials: initialCredentials, mode, o
   useEffect(() => {
     announce(t[status])
   }, [announce, status, t])
+
+  const remotePresent = call.remote === 'present'
+  useEffect(() => {
+    if (remotePresent) latestOnRemoteJoined.current?.()
+  }, [latestOnRemoteJoined, remotePresent])
 
   // Случайно закрытая вкладка оборвала бы звонок — браузер переспросит.
   useEffect(() => {

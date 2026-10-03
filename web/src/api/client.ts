@@ -55,6 +55,7 @@ export class ApiClient {
   private readonly fetchImpl: typeof fetch
   private readonly now: () => number
   private readonly listeners = new Set<(event: SessionEvent) => void>()
+  private readonly beforeLogout = new Set<() => Promise<unknown>>()
   /** Пользователь, под которым работает эта вкладка. */
   private userId: string | null
 
@@ -85,9 +86,14 @@ export class ApiClient {
     return this.login('/auth/oauth/yandex', { code, codeVerifier })
   }
 
-  /** Выход на этом устройстве: токены удаляются сразу, сервер отзывает refresh-токен. */
+  /**
+   * Выход на этом устройстве: сначала задачи [onBeforeLogout], пока вход ещё действует, затем токены
+   * удаляются, а сервер отзывает refresh-токен.
+   */
   async logout(): Promise<void> {
     const session = this.store.get()
+    // Ошибка задачи (нет связи) выход не останавливает.
+    if (session) await Promise.allSettled([...this.beforeLogout].map((task) => task()))
     this.endSession('logged_out')
     if (!session) return
     try {
@@ -169,6 +175,15 @@ export class ApiClient {
   onSessionEvent(listener: (event: SessionEvent) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  /**
+   * Задача, которую нужно выполнить при выходе, пока вход ещё действует, — например, завершить звонок
+   * этой вкладки: иначе он остался бы открытым на сервере. Возвращает функцию отмены.
+   */
+  onBeforeLogout(task: () => Promise<unknown>): () => void {
+    this.beforeLogout.add(task)
+    return () => this.beforeLogout.delete(task)
   }
 
   /** Следит за входом и выходом в других вкладках этого сайта. */

@@ -177,6 +177,23 @@ describe('ApiClient', () => {
     expect(events).toEqual([{ kind: 'ended', reason: 'logged_out' }])
   })
 
+  it('runs tasks before logout while the session still works, even if one of them fails', async () => {
+    const { api, backend, store } = await loggedIn()
+    backend.on('POST', '/auth/logout', jsonResponse(204))
+    const sessionDuringTask: (string | undefined)[] = []
+    api.onBeforeLogout(async () => sessionDuringTask.push(store.get()?.accessToken))
+    api.onBeforeLogout(() => Promise.reject(new NetworkError()))
+    const removed = vi.fn(() => Promise.resolve())
+    api.onBeforeLogout(removed)()
+
+    await api.logout()
+
+    expect(sessionDuringTask).toEqual(['access-1'])
+    expect(removed).not.toHaveBeenCalled()
+    expect(store.get()).toBeNull()
+    expect(backend.calls('POST', '/auth/logout')).toHaveLength(1)
+  })
+
   it('notices logout and another user in other tabs', async () => {
     const { api, store, events } = await loggedIn()
     const target = new EventTarget()

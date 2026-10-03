@@ -3,34 +3,14 @@
 import { vi, type Mock } from 'vitest'
 import { ApiClient } from '../api/client'
 import type { RealtimeEvent, RealtimeEventType, RealtimeHandlers, RealtimeStatus } from '../api/realtime'
-import { createLock, SessionStore } from '../api/session'
+import { createLock, MemoryStorage, SessionStore } from '../api/session'
 import { initialCallState, type CallFactory, type CallOptions, type CallSession, type CallState } from '../call/call'
 import type { AppConfig } from '../config'
 import type { AppServices } from '../ui/context'
 import type { Ringer } from '../ui/ringer'
 
 /** Хранилище в памяти — вместо localStorage и sessionStorage. */
-export class MemoryStorage implements Storage {
-  private readonly items = new Map<string, string>()
-  get length() {
-    return this.items.size
-  }
-  clear() {
-    this.items.clear()
-  }
-  getItem(key: string) {
-    return this.items.get(key) ?? null
-  }
-  key(index: number) {
-    return [...this.items.keys()][index] ?? null
-  }
-  removeItem(key: string) {
-    this.items.delete(key)
-  }
-  setItem(key: string, value: string) {
-    this.items.set(key, value)
-  }
-}
+export { MemoryStorage }
 
 export type RecordedRequest = {
   method: string
@@ -147,17 +127,23 @@ export class FakeRealtime {
   }
 
   status(status: RealtimeStatus) {
-    this.handlers?.onStatus(status)
+    this.opened().onStatus(status)
   }
 
   /** Соединение готово (`ready`). */
   ready() {
-    this.handlers?.onStatus('connected')
-    this.handlers?.onReady()
+    this.opened().onStatus('connected')
+    this.opened().onReady()
   }
 
   emit(type: RealtimeEventType, request: RealtimeEvent['request']) {
-    this.handlers?.onEvent({ type, request })
+    this.opened().onEvent({ type, request })
+  }
+
+  /** Без открытого соединения событие ушло бы в пустоту, и тест упал бы позже и непонятно где. */
+  private opened(): RealtimeHandlers {
+    if (!this.handlers) throw new Error('FakeRealtime: the screen has not connected yet — wait until connections > 0')
+    return this.handlers
   }
 }
 

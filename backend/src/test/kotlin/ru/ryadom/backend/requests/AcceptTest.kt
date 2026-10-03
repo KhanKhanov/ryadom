@@ -59,7 +59,27 @@ class AcceptTest {
 
             assertEquals(1, TestDatabase.queryInt("SELECT count(*) FROM request_notifications WHERE result = 'accepted'"))
             assertEquals(1, TestDatabase.queryInt("SELECT count(*) FROM request_notifications WHERE result = 'too_late'"))
+            winnerEvents.nextOf<ServerEvent.RequestAccepted>()
             winnerEvents.assertNoEvents()
+        }
+
+    @Test
+    fun otherConnectionsOfWinnerStopRinging() =
+        apiTest {
+            val volunteer = volunteer("volunteer-1")
+            val firstTab = connect(volunteer)
+            val secondTab = connect(volunteer)
+            val request = requestHelp(blind())
+            firstTab.nextOf<ServerEvent.RequestIncoming>()
+            secondTab.nextOf<ServerEvent.RequestIncoming>()
+
+            acceptRequest(volunteer, request.id)
+
+            for (tab in listOf(firstTab, secondTab)) {
+                val accepted = tab.nextOf<ServerEvent.RequestAccepted>().request
+                assertEquals(RequestStatus.ACCEPTED, accepted.status)
+                assertNull(accepted.call, "в звонок входит соединение, которое принимало вызов, а не все вкладки")
+            }
         }
 
     @Test
@@ -162,6 +182,7 @@ class AcceptTest {
             val request = requestHelp(blind)
             events.nextOf<ServerEvent.RequestIncoming>()
             acceptRequest(volunteer, request.id)
+            events.nextOf<ServerEvent.RequestAccepted>()
 
             val cancelled = cancelRequest(blind, request.id).body<HelpRequest>()
 

@@ -91,6 +91,7 @@ const ru = {
   incomingAnnouncement: 'Входящий вызов: нужна помощь',
   incomingTabTitle: 'Вызов! — Рядом',
   noticeTaken: 'Вызов принял другой волонтёр.',
+  noticeAcceptedElsewhere: 'Вы приняли этот вызов в другой вкладке или на другом устройстве.',
   noticeCancelled: 'Вызов отменён.',
   noticeNoAnswer: 'Вызов больше не ждёт ответа.',
   languageRu: 'русский',
@@ -123,6 +124,8 @@ const ru = {
 
   callEndedTitle: 'Звонок завершён',
   callEndedByOther: 'Собеседник завершил звонок.',
+  noticeCallEnded: 'Звонок завершён.',
+  noticeCallNotStarted: 'Звонок не состоялся: собеседник не подключился.',
   ratingQuestion: 'Удалось помочь?',
   ratingYes: 'Да',
   ratingNo: 'Нет',
@@ -229,6 +232,7 @@ const en: Strings = {
   incomingAnnouncement: 'Incoming call: someone needs help',
   incomingTabTitle: 'Call! — Ryadom',
   noticeTaken: 'Another volunteer accepted the call.',
+  noticeAcceptedElsewhere: 'You accepted this call in another tab or on another device.',
   noticeCancelled: 'The call was cancelled.',
   noticeNoAnswer: 'The call is no longer waiting for an answer.',
   languageRu: 'Russian',
@@ -261,6 +265,8 @@ const en: Strings = {
 
   callEndedTitle: 'Call ended',
   callEndedByOther: 'The other person ended the call.',
+  noticeCallEnded: 'Call ended.',
+  noticeCallNotStarted: 'The call did not take place: the other person did not join.',
   ratingQuestion: 'Were you able to help?',
   ratingYes: 'Yes',
   ratingNo: 'No',

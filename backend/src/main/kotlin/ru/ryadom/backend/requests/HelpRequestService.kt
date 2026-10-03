@@ -191,6 +191,9 @@ class HelpRequestService(
                     val blindCall = liveKit.credentials(request.id, request.blindUserId, blind?.displayName, CallRole.BLIND)
                     hub.send(listOf(request.blindUserId), ServerEvent.RequestAccepted(request.toApi(blindCall)))
                     hub.send(result.otherWaiting, ServerEvent.RequestTaken(request.toApi()))
+                    // Вызов звонил и в других вкладках и на других устройствах принявшего — там его пора убрать.
+                    // Данных для звонка в событии нет: в звонок входит то соединение, которое принимало вызов.
+                    hub.send(listOf(user.id), ServerEvent.RequestAccepted(request.toApi()))
                     toApiFor(user, request)
                 }
             }

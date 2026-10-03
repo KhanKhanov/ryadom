@@ -8,11 +8,14 @@ import { isCallActive, type HelpRequest } from '../api/types'
 export type NoticeKey =
   | 'incomingAnnouncement'
   | 'noticeTaken'
+  | 'noticeAcceptedElsewhere'
   | 'noticeCancelled'
   | 'noticeNoAnswer'
   | 'errorRequestTaken'
   | 'errorRequestClosed'
   | 'callEndedByOther'
+  | 'noticeCallEnded'
+  | 'noticeCallNotStarted'
 
 export type VolunteerState = {
   /** Вызовы, которые можно принять, — в порядке поступления. */
@@ -21,6 +24,10 @@ export type VolunteerState = {
   accepting: string | null
   /** Идущий звонок: запрос с данными для входа в комнату. */
   call: HelpRequest | null
+  /** Собеседник хоть раз был в идущем звонке — значит, разговор состоялся и его можно оценить. */
+  remoteJoined: boolean
+  /** Волонтёр сам завершает идущий звонок, ответа сервера ещё нет. */
+  ending: boolean
   /** Звонок только что закончился — показываем вопрос «Удалось помочь?». */
   finished: { requestId: string; byOther: boolean } | null
   /** Последнее сообщение; `id` растёт, чтобы одинаковое сообщение тоже прозвучало. */
@@ -31,6 +38,8 @@ export const initialVolunteerState: VolunteerState = {
   incoming: [],
   accepting: null,
   call: null,
+  remoteJoined: false,
+  ending: false,
   finished: null,
   notice: null,
 }
@@ -47,7 +56,13 @@ export type VolunteerAction =
   | { type: 'acceptSucceeded'; request: HelpRequest }
   /** Принять не удалось: `taken`/`closed` — вызов больше не актуален, `retry` — можно попробовать ещё. */
   | { type: 'acceptFailed'; requestId: string; reason: 'taken' | 'closed' | 'retry' }
-  /** Волонтёр сам завершил звонок. */
+  /** Собеседник появился в звонке (по данным LiveKit). */
+  | { type: 'remoteJoined'; requestId: string }
+  /** Волонтёр нажал «Завершить звонок», запрос к серверу отправлен. */
+  | { type: 'endStarted'; requestId: string }
+  /** Завершить звонок не удалось (нет связи) — звонок продолжается. */
+  | { type: 'endFailed'; requestId: string }
+  /** Волонтёр сам завершил звонок: ответ сервера. */
   | { type: 'callEnded'; request: HelpRequest }
   | { type: 'ratingDone' }
 
@@ -71,8 +86,15 @@ export function volunteerReducer(state: VolunteerState, action: VolunteerAction)
       const key = action.reason === 'taken' ? 'errorRequestTaken' : 'errorRequestClosed'
       return notify({ ...state, accepting, incoming: without(state.incoming, action.requestId) }, key)
     }
+    case 'remoteJoined':
+      return state.call?.id === action.requestId ? { ...state, remoteJoined: true } : state
+    case 'endStarted':
+      return state.call?.id === action.requestId ? { ...state, ending: true } : state
+    case 'endFailed':
+      return state.call?.id === action.requestId ? { ...state, ending: false } : state
     case 'callEnded':
-      return state.call?.id === action.request.id ? { ...state, call: null, finished: { requestId: action.request.id, byOther: false } } : state
+      // Событие request.ended могло прийти раньше ответа — тогда звонок уже закрыт.
+      return state.call?.id === action.request.id ? closeCall({ ...state, ending: true }) : state
     case 'ratingDone':
       return { ...state, finished: null }
   }
@@ -85,23 +107,29 @@ function onEvent(state: VolunteerState, event: RealtimeEvent): VolunteerState {
     if (known || request.status !== 'searching') return state
     return notify({ ...state, incoming: [...state.incoming, request] }, 'incomingAnnouncement')
   }
-  const key: NoticeKey | null =
-    event.type === 'request.taken'
-      ? 'noticeTaken'
-      : event.type === 'request.cancelled'
-        ? 'noticeCancelled'
-        : event.type === 'request.no_answer'
-          ? 'noticeNoAnswer'
-          : null
-  return onRequestUpdate(state, request, key)
+  return onRequestUpdate(state, request, eventNotice(event.type))
+}
+
+function eventNotice(type: RealtimeEvent['type']): NoticeKey | null {
+  switch (type) {
+    case 'request.taken':
+      return 'noticeTaken'
+    // Волонтёру request.accepted приходит, когда он сам принял вызов в другой вкладке или на другом устройстве.
+    case 'request.accepted':
+      return 'noticeAcceptedElsewhere'
+    case 'request.cancelled':
+      return 'noticeCancelled'
+    case 'request.no_answer':
+      return 'noticeNoAnswer'
+    default:
+      return null
+  }
 }
 
 /** Запрос изменился: убрать его из входящих, если его больше нельзя принять, и закончить звонок, если он закрыт. */
 function onRequestUpdate(state: VolunteerState, request: HelpRequest, key: NoticeKey | null): VolunteerState {
   if (state.call?.id === request.id) {
-    if (isCallActive(request.status)) return state
-    const ended: VolunteerState = { ...state, call: null, finished: { requestId: request.id, byOther: true } }
-    return notify(ended, 'callEndedByOther')
+    return isCallActive(request.status) ? state : closeCall(state)
   }
   if (request.status === 'searching' || !state.incoming.some((r) => r.id === request.id)) return state
   const updated = { ...state, incoming: without(state.incoming, request.id) }
@@ -111,7 +139,21 @@ function onRequestUpdate(state: VolunteerState, request: HelpRequest, key: Notic
 
 function startCall(state: VolunteerState, request: HelpRequest): VolunteerState {
   // Во время звонка другие вызовы не принять, а к его концу они уже закроются: поиск длится около минуты.
-  return { ...state, call: request, accepting: null, incoming: [], finished: null }
+  return { ...state, call: request, remoteJoined: false, ending: false, accepting: null, incoming: [], finished: null }
+}
+
+/**
+ * Звонок закрыт — им самим или собеседником. «Удалось помочь?» спрашиваем, только если разговор был:
+ * если незрячий отменил вызов или не подключился, оценивать нечего (как на Android, docs/ARCHITECTURE.md, раздел 7).
+ */
+function closeCall(state: VolunteerState): VolunteerState {
+  const call = state.call
+  if (!call) return state
+  const byOther = !state.ending
+  const closed: VolunteerState = { ...state, call: null, remoteJoined: false, ending: false }
+  if (!state.remoteJoined) return notify(closed, byOther ? 'noticeCallNotStarted' : 'noticeCallEnded')
+  const finished: VolunteerState = { ...closed, finished: { requestId: call.id, byOther } }
+  return byOther ? notify(finished, 'callEndedByOther') : finished
 }
 
 function notify(state: VolunteerState, key: NoticeKey): VolunteerState {

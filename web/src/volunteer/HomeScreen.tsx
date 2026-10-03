@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import type { RealtimeStatus } from '../api/realtime'
 import type { HelpRequest, UserProfile } from '../api/types'
 import { SwitchToBlindPanel } from '../auth/RoleScreens'
@@ -27,6 +27,7 @@ type HomeScreenProps = {
 export function HomeScreen(props: HomeScreenProps) {
   const t = useStrings()
   const { ringer } = useServices()
+  useConnectionAnnouncements(props.connection)
   return (
     <section className="screen">
       <ScreenHeading>{t.volunteerTitle}</ScreenHeading>
@@ -53,6 +54,25 @@ function connectionKey(status: RealtimeStatus): StringKey {
     case 'reconnecting':
       return 'connectionReconnecting'
   }
+}
+
+/**
+ * Без связи с сервером вызовы не приходят — экранный диктор сообщает, когда связь пропала
+ * и когда вернулась. Первое подключение при открытии страницы не объявляется.
+ */
+function useConnectionAnnouncements(connection: RealtimeStatus) {
+  const t = useStrings()
+  const announce = useAnnounce()
+  const lost = useRef(false)
+  useEffect(() => {
+    if (connection === 'reconnecting' && !lost.current) {
+      lost.current = true
+      announce(t.connectionReconnecting)
+    } else if (connection === 'connected' && lost.current) {
+      lost.current = false
+      announce(t.connectionConnected)
+    }
+  }, [announce, connection, t])
 }
 
 /** Переключатель «Готов помогать» — поле профиля notificationsEnabled. */
@@ -97,13 +117,19 @@ function ReadyToggle({ profile, onProfileChange }: Pick<HomeScreenProps, 'profil
   )
 }
 
-/** Сообщения о вызовах, которые показываются над списком (голосом они уже объявлены). */
+/**
+ * Сообщения, которые показываются над списком вызовов (голосом они уже объявлены). «Собеседник завершил
+ * звонок» здесь не показывается — оно на экране после звонка и к новым вызовам не относится.
+ */
 const INCOMING_NOTICES: ReadonlySet<NoticeKey> = new Set<NoticeKey>([
   'noticeTaken',
+  'noticeAcceptedElsewhere',
   'noticeCancelled',
   'noticeNoAnswer',
   'errorRequestTaken',
   'errorRequestClosed',
+  'noticeCallEnded',
+  'noticeCallNotStarted',
 ])
 
 function IncomingCalls({ incoming, accepting, notice, onAccept, onSkip }: HomeScreenProps) {

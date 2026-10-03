@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import { ApiError, ErrorCodes, SessionEndedError, errorCode } from '../api/errors'
 import { isCallActive, type UserProfile } from '../api/types'
 import { CallScreen } from '../call/CallScreen'
@@ -77,6 +77,31 @@ export function VolunteerScreen({ profile, onProfileChange }: VolunteerScreenPro
     }
   }, [ringing, ringer, t])
 
+  /**
+   * Волонтёр завершает звонок. Сервер шлёт request.ended обоим участникам, и событие может прийти
+   * раньше ответа — заранее отмечаем, что звонок завершает сам волонтёр, а не собеседник.
+   */
+  const endCall = useCallback(
+    async (requestId: string) => {
+      dispatch({ type: 'endStarted', requestId })
+      try {
+        dispatch({ type: 'callEnded', request: await api.cancelRequest(requestId) })
+      } catch (failure) {
+        dispatch({ type: 'endFailed', requestId })
+        throw failure
+      }
+    },
+    [api],
+  )
+
+  // Выход во время звонка сначала завершает его: иначе звонок остался бы открытым на сервере,
+  // незрячий ждал бы ушедшего волонтёра, а сам волонтёр не получал бы новых вызовов.
+  const callId = state.call?.id ?? null
+  useEffect(() => {
+    if (!callId) return
+    return api.onBeforeLogout(() => endCall(callId))
+  }, [api, callId, endCall])
+
   async function accept(requestId: string) {
     if (latest.current.accepting) return
     setError(null)
@@ -108,15 +133,16 @@ export function VolunteerScreen({ profile, onProfileChange }: VolunteerScreenPro
   }
 
   if (state.call?.call) {
-    const callId = state.call.id
+    const requestId = state.call.id
     return (
       <CallScreen
-        key={callId}
-        requestId={callId}
+        key={requestId}
+        requestId={requestId}
         credentials={state.call.call}
         mode="volunteer"
-        onEnd={async () => dispatch({ type: 'callEnded', request: await api.cancelRequest(callId) })}
+        onEnd={() => endCall(requestId)}
         onClosed={(request) => dispatch({ type: 'requestUpdated', request })}
+        onRemoteJoined={() => dispatch({ type: 'remoteJoined', requestId })}
       />
     )
   }

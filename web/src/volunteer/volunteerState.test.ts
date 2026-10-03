@@ -17,6 +17,12 @@ function reduce(...actions: VolunteerAction[]): VolunteerState {
 
 const accepted = request({ status: 'accepted', call: callJson })
 
+/** Вызов принят, и собеседник уже появился в звонке. */
+const talking: VolunteerAction[] = [
+  { type: 'acceptSucceeded', request: accepted },
+  { type: 'remoteJoined', requestId: 'request-1' },
+]
+
 describe('volunteerReducer', () => {
   it('adds incoming calls once and announces them', () => {
     const state = reduce(event('request.incoming'), event('request.incoming'), event('request.incoming', { id: 'request-2' }))
@@ -31,6 +37,8 @@ describe('volunteerReducer', () => {
 
   it.each([
     ['request.taken', 'accepted', 'noticeTaken'],
+    // Волонтёр принял вызов в другой вкладке или на другом устройстве.
+    ['request.accepted', 'accepted', 'noticeAcceptedElsewhere'],
     ['request.cancelled', 'cancelled', 'noticeCancelled'],
     ['request.no_answer', 'no_answer', 'noticeNoAnswer'],
   ] as const)('removes the call on %s', (type, status, notice) => {
@@ -78,8 +86,19 @@ describe('volunteerReducer', () => {
     expect(state.accepting).toBeNull()
   })
 
+  it('keeps the accepting tab quiet when its own acceptance arrives as an event', () => {
+    const state = reduce(event('request.incoming'), { type: 'acceptStarted', requestId: 'request-1' }, event('request.accepted', { status: 'accepted' }), {
+      type: 'acceptSucceeded',
+      request: accepted,
+    })
+
+    expect(state.call).toEqual(accepted)
+    expect(state.notice?.key).toBe('incomingAnnouncement')
+    expect(volunteerReducer(state, event('request.accepted', { status: 'accepted' }))).toBe(state)
+  })
+
   it('shows the rating question when the other side ends the call', () => {
-    const state = reduce({ type: 'acceptSucceeded', request: accepted }, event('request.ended', { status: 'ended' }))
+    const state = reduce(...talking, event('request.ended', { status: 'ended' }))
 
     expect(state.call).toBeNull()
     expect(state.finished).toEqual({ requestId: 'request-1', byOther: true })
@@ -87,10 +106,56 @@ describe('volunteerReducer', () => {
   })
 
   it('shows the rating question when the volunteer ends the call', () => {
-    const state = reduce({ type: 'acceptSucceeded', request: accepted }, { type: 'callEnded', request: request({ status: 'ended' }) })
+    const state = reduce(...talking, { type: 'endStarted', requestId: 'request-1' }, { type: 'callEnded', request: request({ status: 'ended' }) })
 
     expect(state.call).toBeNull()
     expect(state.finished).toEqual({ requestId: 'request-1', byOther: false })
+  })
+
+  it('does not blame the other side when the end event arrives before the answer to the volunteer’s own end', () => {
+    const state = reduce(
+      ...talking,
+      { type: 'endStarted', requestId: 'request-1' },
+      event('request.ended', { status: 'ended' }),
+      { type: 'callEnded', request: request({ status: 'ended' }) },
+    )
+
+    expect(state.finished).toEqual({ requestId: 'request-1', byOther: false })
+    expect(state.notice).toBeNull()
+  })
+
+  it('blames the other side again after the volunteer failed to end the call', () => {
+    const state = reduce(...talking, { type: 'endStarted', requestId: 'request-1' }, { type: 'endFailed', requestId: 'request-1' }, event('request.ended', { status: 'ended' }))
+
+    expect(state.finished).toEqual({ requestId: 'request-1', byOther: true })
+  })
+
+  it.each([
+    ['request.cancelled', 'cancelled'],
+    ['request.ended', 'ended'],
+  ] as const)('does not ask for a rating when the other side never joined (%s)', (type, status) => {
+    const state = reduce({ type: 'acceptSucceeded', request: accepted }, event(type, { status }))
+
+    expect(state.call).toBeNull()
+    expect(state.finished).toBeNull()
+    expect(state.notice?.key).toBe('noticeCallNotStarted')
+  })
+
+  it('does not ask for a rating when the volunteer ends the call before the other side joined', () => {
+    const state = reduce({ type: 'acceptSucceeded', request: accepted }, { type: 'endStarted', requestId: 'request-1' }, { type: 'callEnded', request: request({ status: 'ended' }) })
+
+    expect(state.finished).toBeNull()
+    expect(state.notice?.key).toBe('noticeCallEnded')
+  })
+
+  it('forgets who joined when the next call starts', () => {
+    const state = reduce(...talking, { type: 'endStarted', requestId: 'request-1' }, { type: 'callEnded', request: request({ status: 'ended' }) }, {
+      type: 'acceptSucceeded',
+      request: request({ id: 'request-2', status: 'accepted', call: callJson }),
+    })
+
+    expect(state.remoteJoined).toBe(false)
+    expect(state.ending).toBe(false)
   })
 
   it('keeps the call while it is still active, for example after the call started', () => {
@@ -114,7 +179,7 @@ describe('volunteerReducer', () => {
 
   it('skips a call and finishes rating', () => {
     expect(reduce(event('request.incoming'), { type: 'skip', requestId: 'request-1' }).incoming).toEqual([])
-    const rated = reduce({ type: 'acceptSucceeded', request: accepted }, { type: 'callEnded', request: request({ status: 'ended' }) }, { type: 'ratingDone' })
+    const rated = reduce(...talking, { type: 'callEnded', request: request({ status: 'ended' }) }, { type: 'ratingDone' })
     expect(rated.finished).toBeNull()
   })
 })

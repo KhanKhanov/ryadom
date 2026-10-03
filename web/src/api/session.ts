@@ -77,6 +77,32 @@ function isStoredSession(value: unknown): value is StoredSession {
   )
 }
 
+/**
+ * Хранилище в памяти: замена localStorage и sessionStorage, если браузер запретил сайту хранилище
+ * (тогда данные живут до перезагрузки страницы), и хранилище для тестов.
+ */
+export class MemoryStorage implements Storage {
+  private readonly items = new Map<string, string>()
+  get length() {
+    return this.items.size
+  }
+  clear() {
+    this.items.clear()
+  }
+  getItem(key: string) {
+    return this.items.get(key) ?? null
+  }
+  key(index: number) {
+    return [...this.items.keys()][index] ?? null
+  }
+  removeItem(key: string) {
+    this.items.delete(key)
+  }
+  setItem(key: string, value: string) {
+    this.items.set(key, value)
+  }
+}
+
 /** Выполняет задачу, пока никто другой не держит блокировку с тем же именем. */
 export type LockRunner = <T>(name: string, task: () => Promise<T>) => Promise<T>
 

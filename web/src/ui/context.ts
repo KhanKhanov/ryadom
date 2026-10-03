@@ -17,7 +17,7 @@ export type AppServices = {
   connectRealtime(handlers: RealtimeHandlers): { stop(): void }
   createCall: CallFactory
   ringer: Ringer
-  /** Хранилище этой вкладки (sessionStorage) — для начатого входа через Яндекс. */
+  /** Хранилище этой вкладки (sessionStorage, а если браузер его запретил — в памяти) — для начатого входа через Яндекс. */
   tabStorage: Storage
   /** Переход на другой сайт (страница входа Яндекса). */
   navigate(url: string): void

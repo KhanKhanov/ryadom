@@ -22,6 +22,16 @@ function helpRequest(overrides: Record<string, unknown> = {}): HelpRequest {
   return parseHelpRequest(requestJson(overrides))
 }
 
+/** Страница открыта во время звонка; [remoteJoined] — собеседник уже в комнате. */
+async function openCall(options: { remoteJoined: boolean }) {
+  const page = await openVolunteerPage({ current: jsonResponse(200, requestJson({ status: 'in_call', call: callJson })) })
+  act(() => page.services.realtime.ready())
+  await screen.findByRole('heading', { name: 'Звонок' })
+  const call = page.services.calls.last
+  act(() => call.update({ connection: 'connected', remote: options.remoteJoined ? 'present' : 'waiting' }))
+  return { ...page, call }
+}
+
 describe('volunteer page', () => {
   it('turns calls off and on', async () => {
     const { services, user } = await openVolunteerPage()
@@ -41,13 +51,26 @@ describe('volunteer page', () => {
 
   it('shows the connection to the server in words', async () => {
     const { services } = await openVolunteerPage()
-    expect(screen.getByText('Подключаемся к серверу…')).toBeInTheDocument()
+    const main = screen.getByRole('main')
+    expect(within(main).getByText('Подключаемся к серверу…')).toBeInTheDocument()
 
     act(() => services.realtime.ready())
-    expect(screen.getByText('На связи с сервером.')).toBeInTheDocument()
+    expect(within(main).getByText('На связи с сервером.')).toBeInTheDocument()
 
     act(() => services.realtime.status('reconnecting'))
-    expect(screen.getByText('Нет связи с сервером. Переподключаемся…')).toBeInTheDocument()
+    expect(within(main).getByText('Нет связи с сервером. Переподключаемся…')).toBeInTheDocument()
+  })
+
+  it('announces when the connection to the server is lost and back, but not the first connection', async () => {
+    const { services } = await openVolunteerPage()
+    act(() => services.realtime.ready())
+    expect(announced()).toBe('')
+
+    act(() => services.realtime.status('reconnecting'))
+    expect(announced()).toBe('Нет связи с сервером. Переподключаемся…')
+
+    act(() => services.realtime.ready())
+    expect(announced()).toBe('На связи с сервером.')
   })
 
   it('rings and announces an incoming call until it is skipped', async () => {
@@ -78,6 +101,17 @@ describe('volunteer page', () => {
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
     expect(within(screen.getByRole('main')).getByText('Вызов принял другой волонтёр.')).toBeInTheDocument()
     expect(announced()).toBe('Вызов принял другой волонтёр.')
+  })
+
+  it('stops ringing when the volunteer accepted the call in another tab', async () => {
+    const { services } = await openVolunteerPage()
+    incoming(services)
+
+    act(() => services.realtime.emit('request.accepted', helpRequest({ status: 'accepted' })))
+
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
+    expect(services.ringer.stop).toHaveBeenCalled()
+    expect(announced()).toBe('Вы приняли этот вызов в другой вкладке или на другом устройстве.')
   })
 
   it('accepts a call and joins the video call with the microphone only', async () => {
@@ -121,13 +155,10 @@ describe('volunteer page', () => {
   })
 
   it('ends the call, leaves the room and asks whether it helped', async () => {
-    const { services, user } = await openVolunteerPage({ current: jsonResponse(200, requestJson({ status: 'in_call', call: callJson })) })
+    const { services, user, call } = await openCall({ remoteJoined: true })
     services.backend
       .on('DELETE', '/requests/request-1', jsonResponse(200, requestJson({ status: 'ended' })))
       .on('POST', '/requests/request-1/rating', jsonResponse(204))
-    act(() => services.realtime.ready())
-    await screen.findByRole('heading', { name: 'Звонок' })
-    const call = services.calls.last
 
     await user.click(screen.getByRole('button', { name: 'Завершить звонок' }))
 
@@ -142,10 +173,58 @@ describe('volunteer page', () => {
     expect(announced()).toBe('Спасибо!')
   })
 
+  it('does not say the other person ended the call when the server event comes before the answer', async () => {
+    const { services, user } = await openCall({ remoteJoined: true })
+    let answer: (response: Response) => void = () => undefined
+    services.backend.on('DELETE', '/requests/request-1', () => new Promise<Response>((resolve) => (answer = resolve)))
+
+    await user.click(screen.getByRole('button', { name: 'Завершить звонок' }))
+    act(() => services.realtime.emit('request.ended', helpRequest({ status: 'ended' })))
+    await act(async () => answer(jsonResponse(200, requestJson({ status: 'ended' }))))
+
+    expect(screen.getByRole('heading', { name: 'Звонок завершён' })).toBeInTheDocument()
+    expect(screen.queryByText('Собеседник завершил звонок.')).not.toBeInTheDocument()
+    expect(announced()).not.toBe('Собеседник завершил звонок.')
+  })
+
+  it('does not ask for a rating when the call did not take place', async () => {
+    const { services } = await openCall({ remoteJoined: false })
+
+    act(() => services.realtime.emit('request.cancelled', helpRequest({ status: 'cancelled' })))
+
+    expect(screen.getByRole('heading', { name: 'Кабинет волонтёра' })).toBeInTheDocument()
+    expect(screen.queryByText('Удалось помочь?')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('main')).getByText('Звонок не состоялся: собеседник не подключился.')).toBeInTheDocument()
+    expect(announced()).toBe('Звонок не состоялся: собеседник не подключился.')
+    expect(services.calls.last.disconnected).toBe(true)
+  })
+
+  it('ends the call before signing out: otherwise it would stay open on the server', async () => {
+    const { services, user } = await openCall({ remoteJoined: true })
+    services.backend
+      .on('DELETE', '/requests/request-1', jsonResponse(200, requestJson({ status: 'ended' })))
+      .on('POST', '/auth/logout', jsonResponse(204))
+
+    await user.click(screen.getByRole('button', { name: 'Выйти' }))
+
+    expect(await screen.findByRole('heading', { name: 'Вход для волонтёров' })).toBeInTheDocument()
+    const order = services.backend.requests.map((r) => `${r.method} ${r.path}`)
+    expect(order.indexOf('DELETE /requests/request-1')).toBeGreaterThanOrEqual(0)
+    expect(order.indexOf('DELETE /requests/request-1')).toBeLessThan(order.indexOf('POST /auth/logout'))
+    expect(services.backend.calls('DELETE', '/requests/request-1')[0].authorization).toBe('Bearer access-1')
+  })
+
+  it('signs out even if the call cannot be ended: there is no connection', async () => {
+    const { services, user } = await openCall({ remoteJoined: true })
+    services.backend.on('DELETE', '/requests/request-1', () => Promise.reject(new TypeError('Failed to fetch')))
+
+    await user.click(screen.getByRole('button', { name: 'Выйти' }))
+
+    expect(await screen.findByRole('heading', { name: 'Вход для волонтёров' })).toBeInTheDocument()
+  })
+
   it('leaves the call when the other person ends it', async () => {
-    const { services, user } = await openVolunteerPage({ current: jsonResponse(200, requestJson({ status: 'accepted', call: callJson })) })
-    act(() => services.realtime.ready())
-    await screen.findByRole('heading', { name: 'Звонок' })
+    const { services, user } = await openCall({ remoteJoined: true })
 
     act(() => services.realtime.emit('request.ended', helpRequest({ status: 'ended' })))
 

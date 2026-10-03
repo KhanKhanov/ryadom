@@ -46,7 +46,11 @@ sealed interface ServerEvent {
         override val request: HelpRequest,
     ) : RequestEvent
 
-    /** Незрячему: волонтёр принял запрос, в `request.call` — данные для звонка. */
+    /**
+     * Волонтёр принял запрос. Незрячему — с данными для звонка в `request.call`; самому принявшему
+     * волонтёру во все соединения — без них: вызов принят в одной из его вкладок или на одном из устройств,
+     * в остальных его пора убрать.
+     */
     @Serializable
     @SerialName("request.accepted")
     data class RequestAccepted(

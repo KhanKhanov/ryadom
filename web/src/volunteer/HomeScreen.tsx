@@ -3,10 +3,12 @@ import type { RealtimeStatus } from '../api/realtime'
 import type { HelpRequest, UserProfile } from '../api/types'
 import { SwitchToBlindPanel } from '../auth/RoleScreens'
 import { format, type StringKey, type Strings } from '../i18n'
+import type { WebPush } from '../push/useWebPush'
 import { Button, ErrorMessage, ScreenHeading } from '../ui/components'
 import { useAnnounce, useServices, useStrings } from '../ui/context'
 import { errorKey } from '../ui/errorText'
 import { useNow } from '../ui/hooks'
+import { PushPanel } from './PushPanel'
 import { hasQuietHours, isQuietNow } from './quietHours'
 import type { NoticeKey } from './volunteerState'
 
@@ -14,6 +16,7 @@ type HomeScreenProps = {
   profile: UserProfile
   onProfileChange(profile: UserProfile): void
   connection: RealtimeStatus
+  push: WebPush
   incoming: HelpRequest[]
   accepting: string | null
   notice: NoticeKey | null
@@ -23,7 +26,7 @@ type HomeScreenProps = {
   children?: ReactNode
 }
 
-/** Главный экран волонтёра: «Готов помогать», время тишины, входящие вызовы. */
+/** Главный экран волонтёра: «Готов помогать», входящие вызовы, уведомления, время тишины. */
 export function HomeScreen(props: HomeScreenProps) {
   const t = useStrings()
   const { ringer } = useServices()
@@ -35,6 +38,7 @@ export function HomeScreen(props: HomeScreenProps) {
       <p className="connection">{t[connectionKey(props.connection)]}</p>
       <IncomingCalls {...props} />
       {props.children}
+      <PushPanel push={props.push} />
       <QuietHours profile={props.profile} onProfileChange={props.onProfileChange} />
       <div className="panel">
         <p>{t.soundHint}</p>

@@ -65,6 +65,14 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// Новая пара ключей VAPID для Web Push (WEB_PUSH_PUBLIC_KEY и WEB_PUSH_PRIVATE_KEY в infra/.env).
+tasks.register<JavaExec>("generateWebPushKeys") {
+    group = "application"
+    description = "Prints a new VAPID key pair for Web Push"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("ru.ryadom.backend.push.GenerateWebPushKeysKt")
+}
+
 // Для локального запуска (`./gradlew :backend:run`) переменные окружения берутся из infra/.env —
 // того же файла, что читает docker-compose (пароль PostgreSQL, JWT_SECRET и др.).
 // Переменные, уже заданные в окружении, имеют приоритет над файлом. Пустое значение (`LIVEKIT_URL=`)

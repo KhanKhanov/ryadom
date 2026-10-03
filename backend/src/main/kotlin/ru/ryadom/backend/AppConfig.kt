@@ -2,7 +2,10 @@ package ru.ryadom.backend
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
+import ru.ryadom.backend.push.FcmSettings
+import ru.ryadom.backend.push.VapidKeys
 import ru.ryadom.shared.api.Language
+import ru.ryadom.shared.api.PushProvider
 import java.time.Duration
 import java.time.LocalTime
 import java.time.ZoneId
@@ -17,6 +20,7 @@ data class AppConfig(
     val requests: RequestsConfig,
     val realtime: RealtimeConfig,
     val liveKit: LiveKitConfig,
+    val push: PushSettings,
 ) {
     companion object {
         /** Минимальная длина секрета для подписи JWT (HS256). */
@@ -106,8 +110,52 @@ data class AppConfig(
                         apiSecret = config.requireString("livekit.apiSecret", "LIVEKIT_API_SECRET"),
                         tokenTtl = config.getDuration("livekit.tokenTtl"),
                     ),
+                push = loadPush(config.getConfig("push")),
             ).also { it.validate() }
         }
+
+        private fun loadPush(push: Config): PushSettings {
+            val webPush = push.getConfig("webPush")
+            val fcm = push.getConfig("fcm")
+            val ruStore = push.getConfig("rustore")
+            return PushSettings(
+                maxDevicesPerUser = push.getInt("maxDevicesPerUser"),
+                webPushHosts = push.getString("webPush.allowedHosts").commaSeparated(),
+                webPush =
+                    optionalGroup("Web Push", webPush, "publicKey" to "WEB_PUSH_PUBLIC_KEY", "privateKey" to "WEB_PUSH_PRIVATE_KEY")
+                        ?.let { (publicKey, privateKey) ->
+                            WebPushSettings(publicKey, privateKey, subject = webPush.getString("subject").trim())
+                        },
+                fcm =
+                    fcm.getString("serviceAccountFile").trim().takeIf { it.isNotEmpty() }?.let { path ->
+                        FcmSettings.fromServiceAccountFile(path)
+                    },
+                ruStore =
+                    optionalGroup("RuStore", ruStore, "projectId" to "RUSTORE_PROJECT_ID", "serviceToken" to "RUSTORE_SERVICE_TOKEN")
+                        ?.let { (projectId, serviceToken) -> RuStoreSettings(projectId, serviceToken) },
+            )
+        }
+
+        /**
+         * Пара настроек канала, которые задаются только вместе: обе пустые — канал выключен (`null`),
+         * одна из двух — ошибка настройки, о которой лучше узнать при старте, а не по молчащим уведомлениям.
+         */
+        private fun optionalGroup(
+            channel: String,
+            config: Config,
+            first: Pair<String, String>,
+            second: Pair<String, String>,
+        ): Pair<String, String>? {
+            val a = config.getString(first.first).trim()
+            val b = config.getString(second.first).trim()
+            if (a.isEmpty() && b.isEmpty()) return null
+            check(a.isNotEmpty() && b.isNotEmpty()) {
+                "$channel: задайте обе переменные окружения ${first.second} и ${second.second} или ни одной"
+            }
+            return a to b
+        }
+
+        private fun String.commaSeparated(): List<String> = split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
 
         private fun Config.requireString(
             path: String,
@@ -136,6 +184,16 @@ data class AppConfig(
         check(matching.firstWaveSize > 0 && matching.nextWaveSize > 0) { "Размеры волн (matching.*WaveSize) должны быть больше нуля" }
         check(matching.waveInterval.isPositive && matching.checkInterval.isPositive) {
             "matching.waveInterval и matching.checkInterval должны быть больше нуля"
+        }
+        check(push.maxDevicesPerUser > 0) { "push.maxDevicesPerUser должно быть больше нуля" }
+        push.webPush?.let { webPush ->
+            check(webPush.subject.startsWith("mailto:") || webPush.subject.startsWith("https://")) {
+                "WEB_PUSH_SUBJECT должен быть адресом mailto: или https:// — по нему push-сервисы браузеров свяжутся с владельцем сервера"
+            }
+            check(VapidKeys.isValidPair(webPush.publicKey, webPush.privateKey)) {
+                "WEB_PUSH_PUBLIC_KEY и WEB_PUSH_PRIVATE_KEY не подходят друг к другу или повреждены. " +
+                    "Создать новую пару: ./gradlew :backend:generateWebPushKeys"
+            }
         }
     }
 }
@@ -229,4 +287,46 @@ data class LiveKitConfig(
     val tokenTtl: Duration,
 ) {
     override fun toString() = "LiveKitConfig(url=$url, apiKey=$apiKey, apiSecret=***, tokenTtl=$tokenTtl)"
+}
+
+/** Push-уведомления о вызовах (docs/ARCHITECTURE.md, раздел 4). Канал без настроек выключен (`null`). */
+data class PushSettings(
+    /** Сколько устройств может быть у пользователя; при регистрации нового самые давние удаляются. */
+    val maxDevicesPerUser: Int,
+    /**
+     * Адреса push-сервисов браузеров, которым сервер отправляет Web Push: точное имя (`fcm.googleapis.com`)
+     * или окончание с точкой (`.push.apple.com`). Адрес подписки присылает клиент — без этого списка
+     * сервер можно было бы заставить отправлять запросы куда угодно, в том числе во внутреннюю сеть.
+     */
+    val webPushHosts: List<String>,
+    val webPush: WebPushSettings?,
+    val fcm: FcmSettings?,
+    val ruStore: RuStoreSettings?,
+) {
+    /** Каналы, через которые сервер может доставить уведомление. */
+    val enabledProviders: Set<PushProvider>
+        get() =
+            buildSet {
+                if (webPush != null) add(PushProvider.WEB_PUSH)
+                if (fcm != null) add(PushProvider.FCM)
+                if (ruStore != null) add(PushProvider.RUSTORE)
+            }
+}
+
+/** Ключи VAPID (RFC 8292) в base64url: открытый — 65 байт, закрытый — 32 байта. */
+data class WebPushSettings(
+    val publicKey: String,
+    val privateKey: String,
+    /** `mailto:` или `https://` — как push-сервис браузера свяжется с владельцем сервера. */
+    val subject: String,
+) {
+    override fun toString() = "WebPushSettings(publicKey=$publicKey, privateKey=***, subject=$subject)"
+}
+
+/** RuStore Push: id проекта и сервисный токен из консоли RuStore. */
+data class RuStoreSettings(
+    val projectId: String,
+    val serviceToken: String,
+) {
+    override fun toString() = "RuStoreSettings(projectId=$projectId, serviceToken=***)"
 }

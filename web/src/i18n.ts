@@ -6,6 +6,7 @@ export type Language = 'ru' | 'en'
 
 const ru = {
   appName: 'Рядом',
+  manifestDescription: 'Кабинет волонтёра: видеопомощь незрячим людям',
   sourceCode: 'Исходный код',
   loading: 'Загрузка…',
   retry: 'Повторить',
@@ -59,7 +60,7 @@ const ru = {
 
   volunteerTitle: 'Кабинет волонтёра',
   readyLabel: 'Готов помогать',
-  readyHintOn: 'Вызовы приходят, пока эта вкладка открыта.',
+  readyHintOn: 'Вызовы приходят на эту страницу, а если включены уведомления — и когда она закрыта.',
   readyHintOff: 'Вызовы не приходят. Включите, когда будете готовы помочь.',
   readyOnAnnouncement: 'Вызовы включены',
   readyOffAnnouncement: 'Вызовы выключены',
@@ -68,6 +69,30 @@ const ru = {
   connectionReconnecting: 'Нет связи с сервером. Переподключаемся…',
   soundHint: 'Входящий вызов сопровождается звуком. Браузер разрешает звук только после нажатия на странице — проверьте, что он слышен.',
   soundTest: 'Проверить звук',
+
+  pushTitle: 'Уведомления о вызовах',
+  pushIntro: 'С уведомлениями вызов придёт, даже когда вкладка закрыта или телефон заблокирован.',
+  pushEnable: 'Включить уведомления',
+  pushDisable: 'Выключить уведомления',
+  pushOn: 'Уведомления включены: вызов придёт, даже когда вкладка закрыта.',
+  pushDesktopHint:
+    'На компьютере браузер должен оставаться запущенным: закрыть можно вкладку, но не сам браузер. Чтобы вызовы приходили и тогда, включите уведомления ещё и на телефоне.',
+  pushOnAnnouncement: 'Уведомления включены',
+  pushOffAnnouncement: 'Уведомления выключены',
+  pushDenied:
+    'Браузер запретил уведомления для этого сайта. Разрешите их в настройках сайта (значок слева от адреса) и обновите страницу.',
+  pushUnsupported:
+    'Этот браузер не показывает уведомления, когда сайт закрыт. Держите вкладку открытой или откройте сайт в Chrome, Firefox, Edge или Safari.',
+  pushNeedsHomeScreen:
+    'На iPhone и iPad уведомления работают, только если добавить сайт на экран «Домой»: нажмите «Поделиться», затем «На экран „Домой“» и откройте «Рядом» оттуда. Нужна iOS 16.4 или новее.',
+  pushBrowserRejected:
+    'Сервер пока не умеет отправлять уведомления в этот браузер. Держите вкладку открытой или откройте сайт в Chrome, Firefox, Edge или Safari.',
+  pushBraveSettings:
+    'Brave не подключился к сервису уведомлений: в Brave он выключен по умолчанию. Откройте brave://settings/privacy, включите параметр «Use Google services for push messaging» (использовать сервисы Google для push-сообщений), обновите страницу и нажмите «Включить уведомления» ещё раз.',
+  pushServiceUnavailable:
+    'Браузер не смог подключиться к своему сервису уведомлений. Попробуйте ещё раз позже или откройте сайт в Chrome, Firefox, Edge или Safari.',
+  pushNotificationTitle: 'Нужна помощь',
+  pushNotificationBody: 'Незрячему человеку нужна помощь по видео. Нажмите, чтобы ответить.',
 
   quietTitle: 'Время тишины',
   quietWindow: 'С {from} до {to} по часовому поясу {timezone} вызовы не приходят.',
@@ -148,6 +173,7 @@ export type StringKey = keyof Strings
 
 const en: Strings = {
   appName: 'Ryadom',
+  manifestDescription: 'Volunteer page: video help for blind people',
   sourceCode: 'Source code',
   loading: 'Loading…',
   retry: 'Try again',
@@ -200,7 +226,7 @@ const en: Strings = {
 
   volunteerTitle: 'Volunteer page',
   readyLabel: 'Ready to help',
-  readyHintOn: 'You receive calls while this tab is open.',
+  readyHintOn: 'Calls come to this page, and with notifications on, even when it is closed.',
   readyHintOff: 'You do not receive calls. Turn this on when you are ready to help.',
   readyOnAnnouncement: 'Calls turned on',
   readyOffAnnouncement: 'Calls turned off',
@@ -209,6 +235,29 @@ const en: Strings = {
   connectionReconnecting: 'No connection to the server. Reconnecting…',
   soundHint: 'An incoming call plays a sound. Browsers allow sound only after you click on the page, so check that you can hear it.',
   soundTest: 'Test the sound',
+
+  pushTitle: 'Call notifications',
+  pushIntro: 'With notifications, a call reaches you even when the tab is closed or the phone is locked.',
+  pushEnable: 'Turn on notifications',
+  pushDisable: 'Turn off notifications',
+  pushOn: 'Notifications are on: a call reaches you even when the tab is closed.',
+  pushDesktopHint:
+    'On a computer the browser must keep running: you can close the tab, but not the browser itself. To get calls even then, turn on notifications on your phone too.',
+  pushOnAnnouncement: 'Notifications turned on',
+  pushOffAnnouncement: 'Notifications turned off',
+  pushDenied: 'The browser has blocked notifications for this site. Allow them in the site settings (the icon left of the address) and reload the page.',
+  pushUnsupported:
+    'This browser does not show notifications when the site is closed. Keep this tab open or open the site in Chrome, Firefox, Edge or Safari.',
+  pushNeedsHomeScreen:
+    'On iPhone and iPad notifications work only for a site added to the Home Screen: tap Share, then “Add to Home Screen”, and open Ryadom from there. iOS 16.4 or later is required.',
+  pushBrowserRejected:
+    'The server cannot send notifications to this browser yet. Keep this tab open or open the site in Chrome, Firefox, Edge or Safari.',
+  pushBraveSettings:
+    'Brave could not connect to its notification service, which is off in Brave by default. Open brave://settings/privacy, turn on “Use Google services for push messaging”, reload the page and press “Turn on notifications” again.',
+  pushServiceUnavailable:
+    'The browser could not connect to its notification service. Try again later or open the site in Chrome, Firefox, Edge or Safari.',
+  pushNotificationTitle: 'Someone needs help',
+  pushNotificationBody: 'A blind person needs help over video. Tap to answer.',
 
   quietTitle: 'Quiet hours',
   quietWindow: 'From {from} to {to} ({timezone} time) you do not receive calls.',
@@ -303,8 +352,9 @@ export function detectLanguage(preferred: readonly string[]): Language {
 /**
  * Применяет язык ко всей странице: атрибут lang (по нему экранный диктор выбирает голос)
  * и заголовок вкладки. В index.html заголовок на русском — он виден только до загрузки скрипта.
+ * Тип документа описан здесь, а не взят из DOM: этот файл собирается и в Service Worker, где DOM нет.
  */
-export function applyLanguageToDocument(doc: Document, language: Language): void {
+export function applyLanguageToDocument(doc: { documentElement: { lang: string }; title: string }, language: Language): void {
   doc.documentElement.lang = language
   doc.title = strings[language].appName
 }

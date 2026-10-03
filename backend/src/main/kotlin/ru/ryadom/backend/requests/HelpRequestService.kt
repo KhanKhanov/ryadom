@@ -16,6 +16,7 @@ import ru.ryadom.shared.api.ApiErrorCodes
 import ru.ryadom.shared.api.CallCredentials
 import ru.ryadom.shared.api.CreateHelpRequest
 import ru.ryadom.shared.api.HelpRequest
+import ru.ryadom.shared.api.IncomingHelpRequests
 import ru.ryadom.shared.api.Rating
 import ru.ryadom.shared.api.RequestStatus
 import ru.ryadom.shared.api.Role
@@ -35,6 +36,7 @@ class HelpRequestService(
     private val users: UserRepository,
     private val dispatcher: RequestDispatcher,
     private val hub: RealtimeHub,
+    private val pushes: RequestPushes,
     private val liveKit: LiveKitService,
     private val locks: RequestLocks,
     private val config: RequestsConfig,
@@ -80,6 +82,13 @@ class HelpRequestService(
         val user = users.requireActiveUser(userId)
         val request = requests.findActiveByBlind(user.id) ?: requests.findActiveByVolunteer(user.id) ?: return null
         return toApiFor(user, request)
+    }
+
+    /** Вызовы, которые ждут ответа волонтёра: идёт поиск, вызов приходил, волонтёр ещё не отвечал. */
+    suspend fun incoming(userId: Uuid): IncomingHelpRequests {
+        val user = users.requireActiveUser(userId)
+        if (user.role != Role.VOLUNTEER) return IncomingHelpRequests(emptyList())
+        return IncomingHelpRequests(requests.findIncoming(user.id).map { it.toApi() })
     }
 
     suspend fun get(
@@ -136,9 +145,19 @@ class HelpRequestService(
                 ?: return checkNotNull(requests.findById(request.id)).toApi()
         log.info("Request {}: {} by requester", closed.id, closed.status.name.lowercase())
         when (request.status) {
-            RequestStatus.SEARCHING -> hub.send(requests.findWaitingVolunteers(closed.id), ServerEvent.RequestCancelled(closed.toApi()))
-            RequestStatus.ACCEPTED -> hub.send(listOfNotNull(closed.acceptedBy), ServerEvent.RequestCancelled(closed.toApi()))
-            else -> hub.sendCallEnded(closed)
+            RequestStatus.SEARCHING -> {
+                val waiting = requests.findWaitingVolunteers(closed.id)
+                hub.send(waiting, ServerEvent.RequestCancelled(closed.toApi()))
+                pushes.closed(waiting, closed)
+            }
+
+            RequestStatus.ACCEPTED -> {
+                hub.send(listOfNotNull(closed.acceptedBy), ServerEvent.RequestCancelled(closed.toApi()))
+            }
+
+            else -> {
+                hub.sendCallEnded(closed)
+            }
         }
         return closed.toApi()
     }
@@ -194,6 +213,8 @@ class HelpRequestService(
                     // Вызов звонил и в других вкладках и на других устройствах принявшего — там его пора убрать.
                     // Данных для звонка в событии нет: в звонок входит то соединение, которое принимало вызов.
                     hub.send(listOf(user.id), ServerEvent.RequestAccepted(request.toApi()))
+                    // То же — уведомлениям на устройствах: и остальных волонтёров, и самого принявшего.
+                    pushes.closed(result.otherWaiting + user.id, request)
                     toApiFor(user, request)
                 }
             }

@@ -4,11 +4,14 @@ import { App } from './App'
 import { readYandexCallback, withoutCallbackParams, type YandexCallback } from './auth/yandex'
 import { loadConfig } from './config'
 import { applyLanguageToDocument, detectLanguage } from './i18n'
+import { manifestPath } from './manifest'
 import { createBrowserServices } from './services'
 import './styles.css'
 
 const language = detectLanguage(navigator.languages)
 applyLanguageToDocument(document, language)
+// Название на экране «Домой» — на языке браузера (в index.html — русский манифест).
+document.querySelector('link[rel="manifest"]')?.setAttribute('href', manifestPath(language))
 
 const config = loadConfig(window.location, import.meta.env)
 

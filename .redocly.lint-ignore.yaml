@@ -11,3 +11,5 @@ docs/api/openapi.yaml:
   # ссылки из расширений Redocly не считает использованием.
   no-unused-components:
     - '#/components/schemas/RealtimeClientMessage'
+    # Содержимое push-уведомления указано в расширении x-push-message операции POST /devices.
+    - '#/components/schemas/PushMessage'

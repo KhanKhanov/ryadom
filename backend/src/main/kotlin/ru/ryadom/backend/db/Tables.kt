@@ -71,6 +71,19 @@ object RequestNotificationsTable : Table("request_notifications") {
     override val primaryKey = PrimaryKey(requestId, volunteerId)
 }
 
+object DevicesTable : Table("devices") {
+    val id = uuid("id")
+    val userId = uuid("user_id").references(UsersTable.id)
+    val provider = text("push_provider")
+    val token = text("token")
+    val webPushP256dh = text("webpush_p256dh").nullable()
+    val webPushAuth = text("webpush_auth").nullable()
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 object RatingsTable : Table("ratings") {
     val requestId = uuid("request_id").references(HelpRequestsTable.id)
     val fromUserId = uuid("from_user_id").references(UsersTable.id)

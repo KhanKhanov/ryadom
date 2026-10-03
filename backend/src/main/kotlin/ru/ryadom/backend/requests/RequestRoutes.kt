@@ -31,6 +31,9 @@ fun Route.requestRoutes(requests: HelpRequestService) {
             val current = requests.current(call.userId)
             if (current == null) call.respond(HttpStatusCode.NoContent) else call.respond(current)
         }
+        get(ApiPaths.REQUESTS_INCOMING) {
+            call.respond(requests.incoming(call.userId))
+        }
         get(ApiPaths.REQUEST) {
             call.respond(requests.get(call.userId, call.requestId))
         }

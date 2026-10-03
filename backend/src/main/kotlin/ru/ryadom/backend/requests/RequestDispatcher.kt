@@ -25,6 +25,7 @@ class RequestDispatcher(
     private val users: UserRepository,
     private val matcher: VolunteerMatcher,
     private val hub: RealtimeHub,
+    private val pushes: RequestPushes,
     private val locks: RequestLocks,
     private val config: MatchingConfig,
     private val limits: RequestsConfig,
@@ -60,9 +61,10 @@ class RequestDispatcher(
         now: Instant,
     ) {
         if (!requests.claimWave(request.id, expectedNextWave = request.nextWave, wave = wave)) return
-        // Пока push-уведомлений нет (этап 5), вызов можно доставить только волонтёрам с открытым WebSocket.
+        // Вызов можно доставить волонтёрам с открытым WebSocket и с устройствами в настроенных каналах push.
         // Автор запроса не получает собственный вызов, даже если успел сменить роль на волонтёра.
-        val volunteers = users.findAvailableVolunteers(hub.connectedUsers() - request.blindUserId)
+        val volunteers =
+            users.findReachableVolunteers(connected = hub.connectedUsers(), pushProviders = pushes.providers, except = request.blindUserId)
         val activity = requests.volunteerActivity(request.id, volunteers.map { it.id })
         val candidates =
             volunteers.map {
@@ -78,6 +80,7 @@ class RequestDispatcher(
         requests.recordNotifications(request.id, wave, chosen, now)
         log.info("Request {} wave {}: {} volunteers notified", request.id, wave, chosen.size)
         hub.send(chosen, ServerEvent.RequestIncoming(request.toApi()))
+        pushes.incoming(chosen, request)
     }
 
     private suspend fun closeWithoutAnswer(
@@ -86,7 +89,9 @@ class RequestDispatcher(
     ) {
         val closed = requests.transition(request.id, from = setOf(RequestStatus.SEARCHING), to = RequestStatus.NO_ANSWER, now) ?: return
         log.info("Request {}: no answer", closed.id)
-        hub.send(requests.findWaitingVolunteers(closed.id) + closed.blindUserId, ServerEvent.RequestNoAnswer(closed.toApi()))
+        val waiting = requests.findWaitingVolunteers(closed.id)
+        hub.send(waiting + closed.blindUserId, ServerEvent.RequestNoAnswer(closed.toApi()))
+        pushes.closed(waiting, closed)
     }
 
     /**

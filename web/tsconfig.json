@@ -13,7 +13,12 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "noEmit": true,
+    // Конфиг Vite (vite.config.ts → vite.pwa.ts → src/manifest.ts) импортирует файлы с расширением .ts:
+    // так его загружает Node.js без сборки (configLoader: native).
+    "allowImportingTsExtensions": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vite.pwa.ts"],
+  // Service Worker работает без DOM — его типы проверяет tsconfig.sw.json.
+  "exclude": ["src/push/serviceWorker.ts"]
 }

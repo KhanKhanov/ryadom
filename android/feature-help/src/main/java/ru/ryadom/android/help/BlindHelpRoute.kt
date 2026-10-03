@@ -1,10 +1,12 @@
 package ru.ryadom.android.help
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +28,18 @@ import ru.ryadom.shared.help.BlindScreen
 
 /** Без камеры волонтёр не увидит, что нужно, без микрофона — не услышит. */
 private val CALL_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+
+/**
+ * Что спросить перед первым запросом помощи: камеру и микрофон, а на Android 13+ ещё и уведомления —
+ * без них уведомление «Ищем волонтёра» / «Идёт звонок» не видно в шторке, и через него не вернуться
+ * в приложение. Отказ в уведомлениях звонку не мешает: поиск и звонок работают и без них.
+ *
+ * Константа POST_NOTIFICATIONS из Android 13 подставляется в код при сборке, а запрашивается
+ * только на Android 13+ — поэтому предупреждение InlinedApi здесь ложное.
+ */
+@SuppressLint("InlinedApi")
+internal fun permissionsToRequest(sdkInt: Int = Build.VERSION.SDK_INT): Array<String> =
+    if (sdkInt >= Build.VERSION_CODES.TIRAMISU) CALL_PERMISSIONS + Manifest.permission.POST_NOTIFICATIONS else CALL_PERMISSIONS
 
 private fun Context.hasCallPermissions() =
     CALL_PERMISSIONS.all {
@@ -56,7 +70,7 @@ fun BlindHelpRoute(
         remember(controller, permissionLauncher) {
             object : BlindHelpActions {
                 override fun requestHelp() {
-                    if (context.hasCallPermissions()) controller.requestHelp() else permissionLauncher.launch(CALL_PERMISSIONS)
+                    if (context.hasCallPermissions()) controller.requestHelp() else permissionLauncher.launch(permissionsToRequest())
                 }
 
                 override fun cancelSearch() = controller.cancelSearch()

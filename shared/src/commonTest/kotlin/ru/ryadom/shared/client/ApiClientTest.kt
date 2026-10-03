@@ -7,7 +7,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import ru.ryadom.shared.api.AuthResponse
+import ru.ryadom.shared.api.Device
 import ru.ryadom.shared.api.HelpRequest
+import ru.ryadom.shared.api.IncomingHelpRequests
+import ru.ryadom.shared.api.PushProvider
+import ru.ryadom.shared.api.RegisterDeviceRequest
 import ru.ryadom.shared.api.RequestStatus
 import ru.ryadom.shared.api.Role
 import ru.ryadom.shared.api.SelectableRole
@@ -208,6 +212,33 @@ class ApiClientTest {
             api.rateRequest(REQUEST_ID, helped = true)
 
             assertEquals("""{"helped":true}""", server.requestsTo("POST", "/requests/$REQUEST_ID/rating").single().body)
+        }
+
+    @Test
+    fun incomingRequestsAreUnwrapped() =
+        runTest {
+            server.on("GET", "/requests/incoming") {
+                FakeServer.ok(IncomingHelpRequests.serializer(), IncomingHelpRequests(listOf(helpRequest(RequestStatus.SEARCHING))))
+            }
+
+            assertEquals(listOf(REQUEST_ID), client().incomingRequests().map { it.id })
+        }
+
+    @Test
+    fun deviceRegistrationAndRemoval() =
+        runTest {
+            server.on("GET", "/push/config") { FakeServer.json(200, """{"webPushPublicKey":null}""") }
+            server.on("POST", "/devices") { FakeServer.ok(Device.serializer(), Device("device-1")) }
+            server.on("DELETE", "/devices/device-1") { FakeResponse(204) }
+            val api = client()
+
+            assertNull(api.pushConfig().webPushPublicKey)
+            val device = api.registerDevice(RegisterDeviceRequest(PushProvider.RUSTORE, token = "rustore-token"))
+            api.deleteDevice(device.id)
+
+            // Ключей Web Push у других каналов нет — поля нет и в теле.
+            assertEquals("""{"provider":"rustore","token":"rustore-token"}""", server.requestsTo("POST", "/devices").single().body)
+            assertEquals("Bearer access-0", server.requestsTo("DELETE", "/devices/device-1").single().authorization)
         }
 
     @Test

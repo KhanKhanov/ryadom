@@ -2,7 +2,9 @@ package ru.ryadom.backend
 
 import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigResolveOptions
+import ru.ryadom.backend.push.VapidKeys
 import ru.ryadom.shared.api.Language
+import ru.ryadom.shared.api.PushProvider
 import java.time.Duration
 import java.time.LocalTime
 import java.time.ZoneId
@@ -140,12 +142,86 @@ class AppConfigTest {
 
     @Test
     fun secretsAreHiddenInToString() {
-        val config = load(requiredEnv + mapOf("YANDEX_CLIENT_ID" to "id", "YANDEX_CLIENT_SECRET" to "yandex-secret"))
+        val (publicKey, privateKey) = VapidKeys.generate()
+        val config =
+            load(
+                requiredEnv +
+                    mapOf(
+                        "YANDEX_CLIENT_ID" to "id",
+                        "YANDEX_CLIENT_SECRET" to "yandex-secret",
+                        "WEB_PUSH_PUBLIC_KEY" to publicKey,
+                        "WEB_PUSH_PRIVATE_KEY" to privateKey,
+                        "WEB_PUSH_SUBJECT" to "mailto:admin@ryadom.test",
+                        "RUSTORE_PROJECT_ID" to "project",
+                        "RUSTORE_SERVICE_TOKEN" to "rustore-secret",
+                    ),
+            )
 
         val printed = config.toString()
         assertFalse("db-password" in printed)
         assertFalse("s".repeat(32) in printed)
         assertFalse("yandex-secret" in printed)
         assertFalse("l".repeat(32) in printed)
+        assertFalse(privateKey in printed)
+        assertFalse("rustore-secret" in printed)
+    }
+
+    @Test
+    fun pushIsOffUntilConfigured() {
+        val push = load(requiredEnv).push
+
+        assertEquals(emptySet(), push.enabledProviders)
+        assertEquals(10, push.maxDevicesPerUser)
+        assertTrue("fcm.googleapis.com" in push.webPushHosts)
+        assertTrue(".push.apple.com" in push.webPushHosts)
+    }
+
+    @Test
+    fun pushChannelsAreEnabledFromEnvironment() {
+        val (publicKey, privateKey) = VapidKeys.generate()
+
+        val push =
+            load(
+                requiredEnv +
+                    mapOf(
+                        "WEB_PUSH_PUBLIC_KEY" to publicKey,
+                        "WEB_PUSH_PRIVATE_KEY" to privateKey,
+                        "WEB_PUSH_SUBJECT" to "https://ryadom.test",
+                        "WEB_PUSH_ALLOWED_HOSTS" to " FCM.googleapis.com , ,.push.example.test",
+                        "RUSTORE_PROJECT_ID" to "project",
+                        "RUSTORE_SERVICE_TOKEN" to "token",
+                    ),
+            ).push
+
+        assertEquals(setOf(PushProvider.WEB_PUSH, PushProvider.RUSTORE), push.enabledProviders)
+        assertEquals(publicKey, push.webPush?.publicKey)
+        assertEquals(listOf("fcm.googleapis.com", ".push.example.test"), push.webPushHosts)
+    }
+
+    @Test
+    fun brokenPushSettingsFailAtStart() {
+        val (publicKey, privateKey) = VapidKeys.generate()
+        val (otherPublicKey, _) = VapidKeys.generate()
+        val webPush =
+            mapOf(
+                "WEB_PUSH_PUBLIC_KEY" to publicKey,
+                "WEB_PUSH_PRIVATE_KEY" to privateKey,
+                "WEB_PUSH_SUBJECT" to "mailto:a@b.test",
+            )
+
+        val halfWebPush = assertFailsWith<IllegalStateException> { load(requiredEnv + ("WEB_PUSH_PUBLIC_KEY" to publicKey)) }
+        assertContains(halfWebPush.message.orEmpty(), "WEB_PUSH_PRIVATE_KEY")
+
+        val mismatched = assertFailsWith<IllegalStateException> { load(requiredEnv + webPush + ("WEB_PUSH_PUBLIC_KEY" to otherPublicKey)) }
+        assertContains(mismatched.message.orEmpty(), "generateWebPushKeys")
+
+        val noSubject = assertFailsWith<IllegalStateException> { load(requiredEnv + webPush + ("WEB_PUSH_SUBJECT" to "")) }
+        assertContains(noSubject.message.orEmpty(), "WEB_PUSH_SUBJECT")
+
+        val halfRuStore = assertFailsWith<IllegalStateException> { load(requiredEnv + ("RUSTORE_SERVICE_TOKEN" to "token")) }
+        assertContains(halfRuStore.message.orEmpty(), "RUSTORE_PROJECT_ID")
+
+        val noFcmFile = assertFailsWith<IllegalStateException> { load(requiredEnv + ("FCM_SERVICE_ACCOUNT_FILE" to "missing.json")) }
+        assertContains(noFcmFile.message.orEmpty(), "FCM_SERVICE_ACCOUNT_FILE")
     }
 }

@@ -58,6 +58,20 @@ export type HelpRequest = {
   call: CallCredentials | null
 }
 
+/** Настройки push-уведомлений (`GET /push/config`). */
+export type PushConfig = {
+  /** Открытый ключ VAPID для PushManager.subscribe(); `null` — Web Push на сервере не настроен. */
+  webPushPublicKey: string | null
+}
+
+/** Подписка браузера на Web Push — то, что сервер сохраняет как устройство (`POST /devices`). */
+export type WebPushSubscription = {
+  endpoint: string
+  /** Ключи подписки в base64url без `=`. */
+  p256dh: string
+  auth: string
+}
+
 export type AuthResponse = {
   accessToken: string
   /** Через сколько секунд истечёт access-токен. */
@@ -105,6 +119,22 @@ export function parseHelpRequest(value: unknown): HelpRequest {
     language: string(json, 'language'),
     call: json.call == null ? null : parseCall(json.call),
   }
+}
+
+/** Ответ `GET /requests/incoming`. */
+export function parseIncomingRequests(value: unknown): HelpRequest[] {
+  const requests = object(value, 'incoming requests').requests
+  if (!Array.isArray(requests)) throw new UnexpectedResponseError('requests must be an array')
+  return requests.map(parseHelpRequest)
+}
+
+export function parsePushConfig(value: unknown): PushConfig {
+  return { webPushPublicKey: nullableString(object(value, 'push config'), 'webPushPublicKey') }
+}
+
+/** Ответ `POST /devices`: id устройства. */
+export function parseDeviceId(value: unknown): string {
+  return string(object(value, 'device'), 'id')
 }
 
 export function parseAuthResponse(value: unknown): AuthResponse {

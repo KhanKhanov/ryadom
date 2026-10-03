@@ -1,0 +1,19 @@
+{
+  // Проверка типов Service Worker (src/push/serviceWorker.ts и всё, что он импортирует):
+  // у него вместо DOM — типы WebWorker. Запускается вместе с основной: npm run typecheck.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": []
+  },
+  "files": ["src/push/serviceWorker.ts"]
+}

@@ -3,15 +3,19 @@ package ru.ryadom.backend.db
 import ru.ryadom.shared.api.Gender
 import ru.ryadom.shared.api.GenderPreference
 import ru.ryadom.shared.api.Language
+import ru.ryadom.shared.api.PushProvider
 import ru.ryadom.shared.api.RequestStatus
 import ru.ryadom.shared.api.Role
 
-// Перевод значений между Kotlin и базой. В базе — те же строки, что в API (`blind`, `ru`, `male`, `in_call`),
+// Перевод значений между Kotlin и базой. В базе — те же строки, что в API (`blind`, `ru`, `male`, `in_call`, `webpush`),
 // а «не указано» хранится как NULL.
 
 internal val Role.dbValue: String get() = name.lowercase()
 internal val Language.dbValue: String get() = name.lowercase()
 internal val RequestStatus.dbValue: String get() = name.lowercase()
+internal val PushProvider.dbValue: String get() = name.lowercase().replace("_", "")
+
+internal fun pushProviderFromDb(value: String): PushProvider = PushProvider.entries.first { it.dbValue == value }
 
 internal fun Gender.toDb(): String? = if (this == Gender.UNSPECIFIED) null else name.lowercase()
 

@@ -26,11 +26,15 @@ import ru.ryadom.shared.api.ApiPaths
 import ru.ryadom.shared.api.AuthResponse
 import ru.ryadom.shared.api.CreateHelpRequest
 import ru.ryadom.shared.api.DevLoginRequest
+import ru.ryadom.shared.api.Device
 import ru.ryadom.shared.api.HelpRequest
+import ru.ryadom.shared.api.IncomingHelpRequests
 import ru.ryadom.shared.api.OAuthLoginRequest
 import ru.ryadom.shared.api.OAuthProvider
+import ru.ryadom.shared.api.PushConfig
 import ru.ryadom.shared.api.Rating
 import ru.ryadom.shared.api.RefreshTokenRequest
+import ru.ryadom.shared.api.RegisterDeviceRequest
 import ru.ryadom.shared.api.UpdateProfileRequest
 import ru.ryadom.shared.api.UserProfile
 import kotlin.time.Clock
@@ -44,7 +48,7 @@ data class AccessToken(
 }
 
 /**
- * Клиент REST API (`docs/api/openapi.yaml`): вход, профиль, запросы помощи.
+ * Клиент REST API (`docs/api/openapi.yaml`): вход, профиль, запросы помощи, устройства для push-уведомлений.
  *
  * Сам добавляет access-токен, заранее обновляет его и один раз повторяет запрос, если сервер ответил 401.
  * Если войти заново нужно самому пользователю (refresh-токен недействителен, пользователь заблокирован),
@@ -134,6 +138,13 @@ class ApiClient(
         return if (response.status == HTTP_NO_CONTENT) null else decode(HelpRequest.serializer(), response)
     }
 
+    /**
+     * Вызовы, которые ждут ответа волонтёра. События без соединения сервер не повторяет, поэтому
+     * список перечитывается после каждого подключения WebSocket и при открытии из push-уведомления.
+     */
+    suspend fun incomingRequests(): List<HelpRequest> =
+        decode(IncomingHelpRequests.serializer(), authorized(HttpMethod.Get, ApiPaths.REQUESTS_INCOMING)).requests
+
     suspend fun getRequest(requestId: String): HelpRequest =
         decode(HelpRequest.serializer(), authorized(HttpMethod.Get, ApiPaths.request(requestId)))
 
@@ -150,6 +161,19 @@ class ApiClient(
         helped: Boolean,
     ) {
         authorized(HttpMethod.Post, ApiPaths.requestRating(requestId), encode(Rating.serializer(), Rating(helped)))
+    }
+
+    // --- Push-уведомления ---
+
+    suspend fun pushConfig(): PushConfig = decode(PushConfig.serializer(), authorized(HttpMethod.Get, ApiPaths.PUSH_CONFIG))
+
+    /** Включает push-уведомления на устройстве. Повторная регистрация того же токена безопасна. */
+    suspend fun registerDevice(request: RegisterDeviceRequest): Device =
+        decode(Device.serializer(), authorized(HttpMethod.Post, ApiPaths.DEVICES, encode(RegisterDeviceRequest.serializer(), request)))
+
+    /** Выключает push-уведомления на устройстве (перед выходом). Повторный вызов безопасен. */
+    suspend fun deleteDevice(deviceId: String) {
+        authorized(HttpMethod.Delete, ApiPaths.device(deviceId))
     }
 
     // --- Токены и сеанс ---

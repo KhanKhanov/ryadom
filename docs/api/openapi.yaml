@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Рядом API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     REST API сервиса видеопомощи незрячим «Рядом».
     Контракт меняется здесь в первую очередь, затем — код сервера и клиентов.
@@ -23,10 +23,10 @@ info:
     405 `invalid_request`; сбой сервера — 500 `internal_error`.
 
     Звонок: незрячий создаёт запрос (`POST /requests`), сервер волнами уведомляет подходящих
-    волонтёров (событие `request.incoming` в WebSocket `/ws`), первый принявший
-    (`POST /requests/{requestId}/accept`) получает данные для входа в комнату LiveKit,
-    незрячий — их же в событии `request.accepted`. Видео и звук идут через LiveKit,
-    сервер API в них не участвует и звонки не записывает.
+    волонтёров (событие `request.incoming` в WebSocket `/ws` и push-уведомление на устройства,
+    зарегистрированные через `POST /devices`), первый принявший (`POST /requests/{requestId}/accept`)
+    получает данные для входа в комнату LiveKit, незрячий — их же в событии `request.accepted`.
+    Видео и звук идут через LiveKit, сервер API в них не участвует и звонки не записывает.
   license:
     name: AGPL-3.0-or-later
     identifier: AGPL-3.0-or-later
@@ -44,6 +44,8 @@ tags:
     description: Профиль текущего пользователя
   - name: requests
     description: Запросы помощи и звонки
+  - name: push
+    description: Push-уведомления о вызовах (FCM, RuStore, Web Push)
   - name: realtime
     description: События в реальном времени (WebSocket)
   - name: webhooks
@@ -307,6 +309,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/UserBanned'
+  /requests/incoming:
+    get:
+      operationId: getIncomingHelpRequests
+      summary: Вызовы, которые ждут ответа волонтёра
+      description: |
+        Запросы в статусе `searching`, о которых волонтёру приходил вызов и которые он ещё не пытался
+        принять, — от старых к новым. События, случившиеся без соединения, сервер не повторяет,
+        поэтому клиент вызывает этот метод после каждого подключения WebSocket и при открытии
+        из push-уведомления. У незрячего и у волонтёра без вызовов список пустой.
+      tags: [requests]
+      responses:
+        '200':
+          description: Вызовы, которые можно принять
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncomingHelpRequests'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
   /requests/{requestId}:
     parameters:
       - $ref: '#/components/parameters/RequestId'
@@ -425,6 +448,87 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /devices:
+    post:
+      operationId: registerDevice
+      summary: Включить push-уведомления на устройстве
+      description: |
+        Сохраняет push-токен устройства (FCM, RuStore) или подписку Web Push браузера. Пока волонтёр
+        готов помогать (`notificationsEnabled`), вызовы приходят на все его устройства push-уведомлением —
+        даже когда приложение или сайт закрыты. Содержимое уведомления — `PushMessage`
+        (расширение `x-push-message` этой операции).
+
+        Регистрировать устройство можно повторно, например при каждом запуске приложения (push-сервис
+        мог выдать новый токен): тот же токен — то же устройство, тот же `id`. Если токеном раньше
+        пользовался другой пользователь (выход и вход под другим именем в том же браузере), устройство
+        переходит к текущему. У пользователя не больше 10 устройств (число задаёт конфиг сервера):
+        при регистрации нового самые давние удаляются.
+
+        Устройства, которые push-сервис больше не знает (приложение удалено, подписка отменена),
+        сервер удаляет сам.
+      tags: [push]
+      # OpenAPI не умеет описывать содержимое push-уведомлений — оно указано в расширении.
+      x-push-message:
+        $ref: '#/components/schemas/PushMessage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceRequest'
+      responses:
+        '200':
+          description: Устройство зарегистрировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+  /devices/{deviceId}:
+    delete:
+      operationId: deleteDevice
+      summary: Выключить push-уведомления на устройстве
+      description: |
+        Клиент вызывает этот метод перед выходом или когда пользователь выключил уведомления.
+        Отвечает 204, даже если устройства уже нет или оно принадлежит другому пользователю
+        (чужое устройство не удаляется), поэтому повторный вызов безопасен.
+      tags: [push]
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: id из ответа `POST /devices`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Готово
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
+  /push/config:
+    get:
+      operationId: getPushConfig
+      summary: Настройки push-уведомлений для клиента
+      tags: [push]
+      responses:
+        '200':
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/UserBanned'
   /ws:
     get:
       operationId: connectRealtime
@@ -455,10 +559,11 @@ paths:
         - `4401` — нет входа, токен неверный или истёк: обновите токены и подключитесь снова;
         - `4403` — пользователь заблокирован.
 
-        Волонтёр получает вызовы, пока соединение открыто и в профиле включено
-        `notificationsEnabled` (push-уведомления появятся позже). События, произошедшие без
-        соединения, не повторяются: после переподключения клиент узнаёт актуальное состояние
-        через `GET /requests/current` или `GET /requests/{requestId}`.
+        Волонтёр получает вызовы, если в профиле включено `notificationsEnabled`: событием
+        в открытое соединение и push-уведомлением на зарегистрированные устройства (`POST /devices`).
+        События, произошедшие без соединения, не повторяются: после переподключения клиент узнаёт
+        актуальное состояние через `GET /requests/current`, `GET /requests/incoming`
+        или `GET /requests/{requestId}`.
       tags: [realtime]
       # Вход — первым сообщением в соединении, а не заголовком (см. описание).
       security: []
@@ -863,6 +968,94 @@ components:
         helped:
           type: boolean
           description: Помог ли звонок.
+    IncomingHelpRequests:
+      type: object
+      required: [requests]
+      properties:
+        requests:
+          type: array
+          description: Вызовы от старых к новым. Данных для звонка (`call`) в них нет — их даёт принятие.
+          items:
+            $ref: '#/components/schemas/HelpRequest'
+    PushProvider:
+      type: string
+      description: |
+        Канал push-уведомлений: `fcm` — Firebase Cloud Messaging (Android с сервисами Google),
+        `rustore` — RuStore Push (Android), `webpush` — Web Push браузера.
+      enum: [fcm, rustore, webpush]
+    RegisterDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, token]
+      properties:
+        provider:
+          $ref: '#/components/schemas/PushProvider'
+        token:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: |
+            Токен устройства от FCM или RuStore. Для `webpush` — адрес подписки (`PushSubscription.endpoint`):
+            только `https://` и только адреса push-сервисов браузеров, известных серверу.
+        webPush:
+          $ref: '#/components/schemas/WebPushKeys'
+    WebPushKeys:
+      type: object
+      additionalProperties: false
+      description: |
+        Ключи подписки Web Push (`PushSubscription.getKey()` в base64url без `=`), ими сервер шифрует
+        уведомления. Обязательны для `webpush`, для других каналов не передаются.
+      required: [p256dh, auth]
+      properties:
+        p256dh:
+          type: string
+          description: Открытый ключ браузера P-256 (65 байт).
+          pattern: '^[A-Za-z0-9_-]+$'
+        auth:
+          type: string
+          description: Секрет аутентификации (16 байт).
+          pattern: '^[A-Za-z0-9_-]+$'
+    Device:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Нужен, чтобы выключить уведомления (`DELETE /devices/{deviceId}`).
+    PushConfig:
+      type: object
+      required: [webPushPublicKey]
+      properties:
+        webPushPublicKey:
+          description: |
+            Открытый ключ VAPID сервера (base64url) — `applicationServerKey` для `PushManager.subscribe()`.
+            `null` — Web Push на этом сервере не настроен.
+          type: [string, 'null']
+    PushMessage:
+      type: object
+      description: |
+        Содержимое push-уведомления: в Web Push — JSON в зашифрованном теле, в FCM и RuStore — поле `data`
+        (значения — строки). Уведомление идёт через внешние сервисы (Google, VK, компании-разработчики
+        браузеров), поэтому в нём только вид события и id запроса, без данных о людях: остальное клиент
+        узнаёт через API. Неизвестный `type` клиент пропускает: новые виды могут появиться в новых версиях
+        сервера.
+      required: [type, requestId]
+      properties:
+        type:
+          type: string
+          description: |
+            - `request.incoming` — новый вызов: показать уведомление (на Android — позвонить). Браузер
+              показывает уведомление на каждое такое push-сообщение: Safari отзывает подписку, если
+              на push ничего не показано, Firefox — после нескольких таких push;
+            - `request.closed` — вызов больше не ждёт ответа (его приняли, отменили или никто не ответил):
+              перестать звонить и убрать уведомление. Только для FCM и RuStore, браузерам не отправляется
+              (им пришлось бы показать ещё одно уведомление). Приходит волонтёрам, которым приходил вызов, —
+              в том числе принявшему, чтобы вызов перестал звонить на его других устройствах.
+          enum: [request.incoming, request.closed]
+        requestId:
+          type: string
+          format: uuid
     RealtimeClientMessage:
       type: object
       additionalProperties: false

@@ -1,5 +1,7 @@
-# Секреты
+# Секреты и локальные настройки
 .env
+.env.local
+.env.*.local
 *.jks
 *.keystore
 local.properties

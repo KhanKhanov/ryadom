@@ -58,14 +58,24 @@
    1. Волонтёр (роль выбирается через `PATCH /me`) держит открытым WebSocket `ws://localhost:8080/ws` и первым сообщением отправляет `{"type":"auth","accessToken":"…"}`.
    2. Незрячий вызывает `POST /requests` с телом `{}` — волонтёру приходит событие `request.incoming`.
    3. Волонтёр вызывает `POST /requests/{id}/accept` и получает адрес и токен LiveKit; незрячему приходит `request.accepted` со своим токеном.
+   4. Любой участник завершает звонок вызовом `DELETE /requests/{id}`, оба получают `request.ended`.
 
    Пока push-уведомлений нет (этап 5), вызов получают только волонтёры с открытым WebSocket.
 
-3. Веб:
+3. Веб — кабинет волонтёра (<http://localhost:5173>):
 
    ```bash
    cd web && npm install && npm run dev
    ```
+
+   Сайт обращается к API по адресу `/api/...`, а Vite пересылает эти запросы на backend `http://localhost:8080`, поэтому backend должен быть запущен.
+
+   В режиме разработки есть вход без Яндекс ID (по логину, например `volunteer-1`) и страница «тестовый незрячий»: она создаёт запрос помощи и показывает камеру компьютера. Так звонок проверяется без Android-приложения:
+   1. Войдите как `volunteer-1` и нажмите «Стать волонтёром». Если сейчас время тишины (по умолчанию 22:00–08:00), вызовы не придут — отключите его в кабинете.
+   2. В окне инкогнито или другом браузере (вкладки одного окна делят сохранённый вход) откройте тот же адрес, войдите как `blind-1`, нажмите «Стать тестовым незрячим» и «Попросить помощи».
+   3. В кабинете волонтёра появится вызов со звуком — примите его.
+
+   Вход через Яндекс ID на сайте: скопируйте `web/.env.example` в `web/.env.local` и укажите `VITE_YANDEX_CLIENT_ID`; в настройках приложения на <https://oauth.yandex.ru> добавьте Callback URI `http://localhost:5173/`.
 
 4. Android: откройте корень репозитория в Android Studio и запустите конфигурацию `android.app`.
 
@@ -75,8 +85,10 @@
 
 ```bash
 ./gradlew ktlintCheck :backend:test :shared:jvmTest :android:app:lintDebug :android:app:testDebugUnitTest
-cd web && npm run lint && npm test
+cd web && npm run lint && npm test && npm run build
 ```
+
+`npm run build` заодно проверяет типы TypeScript. Тесты web работают с поддельными сервером, WebSocket и звонком (`web/src/testing`), backend для них не нужен.
 
 Доступность Android: в Compose-тесте каждого экрана вызывайте `assertScreenIsAccessible()` (`android/app/src/test/.../testing/AccessibilityChecks.kt`) — тест упадёт, если у кнопки нет описания для TalkBack или она меньше 48 dp.
 

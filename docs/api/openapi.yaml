@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Рядом API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     REST API сервиса видеопомощи незрячим «Рядом».
     Контракт меняется здесь в первую очередь, затем — код сервера и клиентов.
@@ -322,11 +322,17 @@ paths:
           $ref: '#/components/responses/NotFound'
     delete:
       operationId: cancelHelpRequest
-      summary: Отменить запрос или завершить звонок (незрячий)
+      summary: Отменить запрос или завершить звонок
       description: |
-        `searching` и `accepted` переходят в `cancelled`, `in_call` — в `ended`.
+        Вызывают участники запроса:
+
+        - незрячий, создавший запрос: `searching` и `accepted` переходят в `cancelled`, `in_call` — в `ended`;
+          волонтёры, которых это касается, получают `request.cancelled` или `request.ended`;
+        - волонтёр, принявший запрос, завершает звонок: `accepted` и `in_call` переходят в `ended`,
+          оба участника получают `request.ended`. Так звонок закрывается сразу, даже если приложение
+          собеседника ещё не вышло из комнаты LiveKit.
+
         Уже закрытый запрос не меняется, поэтому повторный вызов безопасен.
-        Волонтёры, которых это касается, получают `request.cancelled` или `request.ended`.
       tags: [requests]
       responses:
         '200':
@@ -334,7 +340,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Запрос создал другой пользователь (`forbidden`) или пользователь заблокирован (`user_banned`)
+          description: |
+            Пользователь не участник запроса — например, волонтёр, которому приходило уведомление,
+            но запрос принял не он (`forbidden`), — или пользователь заблокирован (`user_banned`)
           content:
             application/json:
               schema:
@@ -760,7 +768,7 @@ components:
         - `searching` — ищем волонтёра;
         - `accepted` — волонтёр принял запрос, участники подключаются к звонку;
         - `in_call` — звонок идёт;
-        - `ended` — звонок завершён;
+        - `ended` — звонок завершён (или волонтёр, приняв запрос, завершил его до начала разговора);
         - `no_answer` — за время поиска никто не принял запрос;
         - `cancelled` — незрячий отменил запрос до начала звонка.
 

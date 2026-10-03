@@ -92,7 +92,10 @@ class HelpRequestService(
         return toApiFor(user, request)
     }
 
-    /** Незрячий отменяет поиск или завершает звонок. Повторный вызов ничего не меняет. */
+    /**
+     * Участник закрывает запрос: незрячий отменяет поиск или завершает звонок,
+     * принявший запрос волонтёр завершает звонок. Повторный вызов ничего не меняет.
+     */
     suspend fun cancel(
         userId: Uuid,
         requestId: Uuid,
@@ -100,30 +103,59 @@ class HelpRequestService(
         val user = users.requireActiveUser(userId)
         return locks.withLock(requestId) {
             val request = requests.findById(requestId) ?: throw notFound()
-            if (request.blindUserId != user.id) {
+            when (user.id) {
+                request.blindUserId -> {
+                    cancelByRequester(request)
+                }
+
+                request.acceptedBy -> {
+                    endByVolunteer(request)
+                }
+
                 // Волонтёр, который видит запрос, получает понятную ошибку; остальные — 404, как будто запроса нет.
-                if (request.isParticipant(user.id) || requests.wasNotified(request.id, user.id)) {
-                    throw ApiException.forbidden("Only the requester can cancel a help request")
+                else -> {
+                    if (requests.wasNotified(request.id, user.id)) {
+                        throw ApiException.forbidden("Only participants can cancel a help request or end its call")
+                    }
+                    throw notFound()
                 }
-                throw notFound()
             }
-            val closedStatus =
-                when (request.status) {
-                    RequestStatus.SEARCHING, RequestStatus.ACCEPTED -> RequestStatus.CANCELLED
-                    RequestStatus.IN_CALL -> RequestStatus.ENDED
-                    else -> return@withLock request.toApi() // Уже закрыт — ничего не меняем.
-                }
-            val closed =
-                requests.transition(request.id, from = setOf(request.status), to = closedStatus, clock.instant())
-                    ?: return@withLock checkNotNull(requests.findById(request.id)).toApi()
-            log.info("Request {}: {} by requester", closed.id, closed.status.name.lowercase())
-            when (request.status) {
-                RequestStatus.SEARCHING -> hub.send(requests.findWaitingVolunteers(closed.id), ServerEvent.RequestCancelled(closed.toApi()))
-                RequestStatus.ACCEPTED -> hub.send(listOfNotNull(closed.acceptedBy), ServerEvent.RequestCancelled(closed.toApi()))
-                else -> hub.sendCallEnded(closed)
-            }
-            closed.toApi()
         }
+    }
+
+    /** Незрячий отменяет поиск или завершает звонок. Вызывать под блокировкой запроса. */
+    private suspend fun cancelByRequester(request: HelpRequestRecord): HelpRequest {
+        val closedStatus =
+            when (request.status) {
+                RequestStatus.SEARCHING, RequestStatus.ACCEPTED -> RequestStatus.CANCELLED
+                RequestStatus.IN_CALL -> RequestStatus.ENDED
+                else -> return request.toApi() // Уже закрыт — ничего не меняем.
+            }
+        val closed =
+            requests.transition(request.id, from = setOf(request.status), to = closedStatus, clock.instant())
+                ?: return checkNotNull(requests.findById(request.id)).toApi()
+        log.info("Request {}: {} by requester", closed.id, closed.status.name.lowercase())
+        when (request.status) {
+            RequestStatus.SEARCHING -> hub.send(requests.findWaitingVolunteers(closed.id), ServerEvent.RequestCancelled(closed.toApi()))
+            RequestStatus.ACCEPTED -> hub.send(listOfNotNull(closed.acceptedBy), ServerEvent.RequestCancelled(closed.toApi()))
+            else -> hub.sendCallEnded(closed)
+        }
+        return closed.toApi()
+    }
+
+    /**
+     * Волонтёр завершает звонок — в том числе до того, как незрячий подключился.
+     * Без этого звонок, из которого ушёл только волонтёр, оставался бы открытым, пока не выйдет незрячий,
+     * и волонтёр не мог бы принимать новые вызовы. Вызывать под блокировкой запроса.
+     */
+    private suspend fun endByVolunteer(request: HelpRequestRecord): HelpRequest {
+        if (request.status !in CALL_STATUSES) return request.toApi() // Уже закрыт — ничего не меняем.
+        val ended =
+            requests.transition(request.id, from = CALL_STATUSES, to = RequestStatus.ENDED, clock.instant())
+                ?: return checkNotNull(requests.findById(request.id)).toApi()
+        log.info("Request {}: call ended by volunteer", ended.id)
+        hub.sendCallEnded(ended)
+        return ended.toApi()
     }
 
     /** Волонтёр принимает запрос. Побеждает первый; повторное нажатие того же волонтёра безопасно. */

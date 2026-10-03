@@ -54,6 +54,8 @@ class AcceptTest {
             assertEquals(RequestStatus.ACCEPTED, taken.status)
             assertNull(taken.call, "проигравший волонтёр не получает доступа к звонку")
             acceptRequest(other, request.id).assertError(HttpStatusCode.Conflict, ApiErrorCodes.REQUEST_TAKEN)
+            // Завершить чужой звонок нельзя.
+            cancelRequest(other, request.id).assertError(HttpStatusCode.Forbidden, ApiErrorCodes.FORBIDDEN)
 
             assertEquals(1, TestDatabase.queryInt("SELECT count(*) FROM request_notifications WHERE result = 'accepted'"))
             assertEquals(1, TestDatabase.queryInt("SELECT count(*) FROM request_notifications WHERE result = 'too_late'"))

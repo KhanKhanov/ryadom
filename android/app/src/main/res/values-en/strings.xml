@@ -1,5 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ryadom</string>
-    <string name="welcome_description">Video assistance for blind people. The app is under development.</string>
+
+    <string name="login_title">Sign in</string>
+    <string name="login_intro">Video assistance for blind people: a volunteer looks through your phone camera and tells you what is in front of you.</string>
+    <string name="login_yandex">Sign in with Yandex ID</string>
+    <string name="login_not_configured">Sign-in with Yandex ID is not configured in this build of the app.</string>
+    <string name="login_dev_label">Development login</string>
+    <string name="login_dev">Sign in without Yandex ID (development)</string>
+    <string name="login_reason_expired">Your session has expired. Please sign in again.</string>
+    <string name="login_reason_banned">Your account has been blocked.</string>
+
+    <string name="role_title">Who are you?</string>
+    <string name="role_blind">I need help</string>
+    <string name="role_volunteer">I want to help</string>
+
+    <string name="offline_title">No connection</string>
+    <string name="offline_retry">Try again</string>
+
+    <string name="volunteer_not_yet">The volunteer app is coming later. For now, please help through the Ryadom website. If you need help yourself, tap “I need help”.</string>
+    <string name="role_unsupported">The app has no screens for your role yet. Please use the Ryadom website.</string>
 </resources>

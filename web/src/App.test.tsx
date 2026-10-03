@@ -178,6 +178,36 @@ describe('roles', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Сначала завершите текущий запрос или звонок.')
   })
 
+  it('lets a volunteer who chose the role by mistake switch to asking for help', async () => {
+    const services = createTestServices({ loggedIn: true })
+    services.backend
+      .on('GET', '/me', jsonResponse(200, profileJson()))
+      .on('GET', '/requests/current', jsonResponse(204))
+      .on('PATCH', '/me', jsonResponse(200, profileJson({ role: 'blind' })))
+    const { user } = renderApp(services)
+
+    await user.click(await screen.findByRole('button', { name: 'Мне нужна помощь' }))
+
+    expect(await screen.findByRole('heading', { name: 'Этот аккаунт — для просьб о помощи' })).toBeInTheDocument()
+    expect(services.backend.calls('PATCH', '/me')[0].body).toMatchObject({ role: 'blind' })
+    // Обратно — той же кнопкой «Стать волонтёром».
+    expect(screen.getByRole('button', { name: 'Стать волонтёром' })).toBeInTheDocument()
+  })
+
+  it('explains why the role cannot be changed during a call', async () => {
+    const services = createTestServices({ loggedIn: true })
+    services.backend
+      .on('GET', '/me', jsonResponse(200, profileJson()))
+      .on('GET', '/requests/current', jsonResponse(204))
+      .on('PATCH', '/me', errorResponse(409, 'active_request_exists'))
+    const { user } = renderApp(services)
+
+    await user.click(await screen.findByRole('button', { name: 'Мне нужна помощь' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Сначала завершите текущий запрос или звонок.')
+    expect(screen.getByRole('heading', { name: 'Кабинет волонтёра' })).toBeInTheDocument()
+  })
+
   it('opens the test blind page for a blind user in development', async () => {
     const services = createTestServices({ loggedIn: true, config: { devTools: true } })
     services.backend.on('GET', '/me', jsonResponse(200, profileJson({ role: 'blind' })))

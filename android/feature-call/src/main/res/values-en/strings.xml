@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_end">End call</string>
+    <string name="call_ending">Ending the call…</string>
+    <string name="call_microphone_off">Mute microphone</string>
+    <string name="call_microphone_on">Unmute microphone</string>
+    <string name="call_microphone_blocked">No access to the microphone</string>
+    <string name="call_microphone_muted">Your microphone is muted.</string>
+
+    <string name="call_notification_channel">Call</string>
+    <string name="call_notification_searching">Looking for a volunteer</string>
+    <string name="call_notification_call">Call in progress</string>
+</resources>

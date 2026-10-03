@@ -47,6 +47,9 @@ const ru = {
   roleBlindTitle: 'Этот аккаунт — для просьб о помощи',
   roleBlindText:
     'Веб-версия — только для волонтёров. Чтобы попросить помощи, используйте приложение для Android. Если вы хотите помогать сами, смените роль.',
+  roleSwitchTitle: 'Помощь нужна вам самим?',
+  roleSwitchText: 'Если роль волонтёра выбрана по ошибке, смените её: просить помощи можно в приложении «Рядом» для Android.',
+  becomeBlind: 'Мне нужна помощь',
   roleAdminTitle: 'Админка появится позже',
   roleAdminText: 'Сейчас в веб-версии есть только кабинет волонтёра.',
   roleUnknownTitle: 'Веб-версия не поддерживает вашу роль',
@@ -128,7 +131,7 @@ const ru = {
 
   devBlindTitle: 'Тестовый незрячий',
   devBlindIntro:
-    'Страница для проверки звонка без Android-приложения. Волонтёр входит в окне инкогнито или в другом браузере: вкладки одного окна делят сохранённый вход.',
+    'Страница для проверки звонка без Android-приложения. Волонтёр входит в окне инкогнито или в другом браузере: все обычные окна браузера делят сохранённый вход.',
   requestHelp: 'Попросить помощи',
   searching: 'Ищем волонтёра…',
   cancelRequest: 'Отменить',
@@ -182,6 +185,9 @@ const en: Strings = {
   roleBlindTitle: 'This account is for asking for help',
   roleBlindText:
     'The web version is for volunteers only. To ask for help, use the Android app. If you want to help others yourself, change your role.',
+  roleSwitchTitle: 'Do you need help yourself?',
+  roleSwitchText: 'If you chose the volunteer role by mistake, change it: you can ask for help in the Ryadom app for Android.',
+  becomeBlind: 'I need help',
   roleAdminTitle: 'The admin panel is coming later',
   roleAdminText: 'For now the web version has only the volunteer page.',
   roleUnknownTitle: 'The web version does not support your role',
@@ -263,7 +269,7 @@ const en: Strings = {
 
   devBlindTitle: 'Test blind user',
   devBlindIntro:
-    'A page to try a call without the Android app. The volunteer signs in in a private window or another browser, because tabs of one window share the saved sign-in.',
+    'A page to try a call without the Android app. The volunteer signs in in a private window or another browser, because all regular windows of a browser share the saved sign-in.',
   requestHelp: 'Ask for help',
   searching: 'Looking for a volunteer…',
   cancelRequest: 'Cancel',

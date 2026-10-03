@@ -13,8 +13,12 @@
 | Папка | Что внутри |
 |---|---|
 | `backend/` | Сервер на Kotlin + Ktor |
-| `shared/` | Kotlin Multiplatform: общая логика для Android, iOS и сервера |
-| `android/` | Android-приложение (Jetpack Compose) |
+| `shared/` | Kotlin Multiplatform: модели API, клиент API и WebSocket, вход, состояния запроса и звонка — общее для Android, iOS и сервера |
+| `android/app` | Android-приложение (Jetpack Compose): вход, выбор роли, сборка модулей вместе |
+| `android/feature-help` | Экраны незрячего: большая кнопка, поиск, звонок, оценка |
+| `android/feature-call` | Видеозвонок на LiveKit и foreground service на время поиска и звонка |
+| `android/core-ui` | Тема и доступные компоненты, общие для всех экранов |
+| `android/testing` | Проверки доступности для тестов (`assertScreenIsAccessible()`) |
 | `web/` | Кабинет волонтёра и админка (React + TypeScript, Vite) |
 | `infra/` | `docker-compose.yml`, конфиг LiveKit |
 | `docs/` | Архитектура, API, чек-листы |
@@ -58,7 +62,7 @@
    1. Волонтёр (роль выбирается через `PATCH /me`) держит открытым WebSocket `ws://localhost:8080/ws` и первым сообщением отправляет `{"type":"auth","accessToken":"…"}`.
    2. Незрячий вызывает `POST /requests` с телом `{}` — волонтёру приходит событие `request.incoming`.
    3. Волонтёр вызывает `POST /requests/{id}/accept` и получает адрес и токен LiveKit; незрячему приходит `request.accepted` со своим токеном.
-   4. Любой участник завершает звонок вызовом `DELETE /requests/{id}`, оба получают `request.ended`.
+   4. Любой участник завершает звонок вызовом `DELETE /requests/{id}`, оба получают `request.ended`. Исключение: если незрячий отменил запрос, пока в комнату звонка никто не вошёл, запрос становится `cancelled`, а волонтёр получает `request.cancelled`.
 
    Пока push-уведомлений нет (этап 5), вызов получают только волонтёры с открытым WebSocket.
 
@@ -72,25 +76,53 @@
 
    В режиме разработки есть вход без Яндекс ID (по логину, например `volunteer-1`) и страница «тестовый незрячий»: она создаёт запрос помощи и показывает камеру компьютера. Так звонок проверяется без Android-приложения:
    1. Войдите как `volunteer-1` и нажмите «Стать волонтёром». Если сейчас время тишины (по умолчанию 22:00–08:00), вызовы не придут — отключите его в кабинете.
-   2. В окне инкогнито или другом браузере (вкладки одного окна делят сохранённый вход) откройте тот же адрес, войдите как `blind-1`, нажмите «Стать тестовым незрячим» и «Попросить помощи».
-   3. В кабинете волонтёра появится вызов со звуком — примите его.
+   2. В окне инкогнито или другом браузере (все обычные окна браузера делят сохранённый вход) откройте тот же адрес, войдите как `blind-1`, нажмите «Стать тестовым незрячим» и «Попросить помощи».
+   3. В кабинете волонтёра появится вызов со звуком — примите его. Звук браузер включает только после нажатия на странице: если после загрузки вы ничего не нажимали, вызов придёт беззвучно — нажмите «Проверить звук».
+
+   Сайт по адресу компьютера в локальной сети (`http://192.168…`, например с телефона) войти через Яндекс и позвонить не сможет: браузер даёт камеру, микрофон и криптографию для входа только по HTTPS или на `localhost`.
 
    Вход через Яндекс ID на сайте: скопируйте `web/.env.example` в `web/.env.local` и укажите `VITE_YANDEX_CLIENT_ID`; в настройках приложения на <https://oauth.yandex.ru> добавьте Callback URI `http://localhost:5173/`.
 
-4. Android: откройте корень репозитория в Android Studio и запустите конфигурацию `android.app`.
+4. Android — приложение незрячего (<https://developer.android.com/studio/run/emulator>):
+
+   Откройте корень репозитория в Android Studio, запустите эмулятор (или подключите телефон по USB с включённой отладкой) и пробросьте порты компьютера в устройство. Так приложение на эмуляторе или телефоне обращается к `localhost` компьютера: к backend (8080) и LiveKit (7880 — сигнализация, 7881 — видео и звук по TCP):
+
+   ```bash
+   adb reverse tcp:8080 tcp:8080 && adb reverse tcp:7880 tcp:7880 && adb reverse tcp:7881 tcp:7881
+   ```
+
+   Проброс сбрасывается при перезапуске эмулятора, переподключении телефона и после UI-тестов (`connectedDebugAndroidTest`) — выполните команду снова. Настраивать `LIVEKIT_NODE_IP` и `LIVEKIT_URL` в `infra/.env` для этого не нужно.
+
+   Затем запустите конфигурацию `android.app`. Отладочная сборка входит без Яндекс ID — по логину (по умолчанию `blind-1`); роль выберите «Мне нужна помощь». Сквозной звонок: волонтёр в браузере (шаг 3) нажимает «Принять» и видит камеру телефона.
+
+   Настройки сборки — в `local.properties` в корне репозитория (файл не попадает в git):
+
+   - `ryadom.apiUrl` — адрес backend, по умолчанию `http://localhost:8080`. Для телефона по Wi-Fi без USB укажите адрес компьютера в локальной сети (`http://192.168.1.10:8080`) и заполните `LIVEKIT_NODE_IP` и `LIVEKIT_URL` в `infra/.env` (см. `infra/.env.example`); брандмауэр компьютера должен пропускать эти порты.
+   - `ryadom.yandexClientId` — client_id приложения в Яндекс ID (<https://oauth.yandex.ru>) для кнопки «Войти через Яндекс ID». Пусто — кнопки нет. Если у Android-приложения отдельная регистрация, добавьте её client_id в `YANDEX_EXTRA_CLIENT_IDS` на сервере.
 
 ## Тесты и линтеры
 
 Тесты backend поднимают настоящий PostgreSQL в Docker (Testcontainers), поэтому Docker должен быть запущен.
 
 ```bash
-./gradlew ktlintCheck :backend:test :shared:jvmTest :android:app:lintDebug :android:app:testDebugUnitTest
+./gradlew ktlintCheck :backend:test :shared:jvmTest :android:app:lintDebug testDebugUnitTest
 cd web && npm run lint && npm test && npm run build
 ```
 
-`npm run build` заодно проверяет типы TypeScript. Тесты web работают с поддельными сервером, WebSocket и звонком (`web/src/testing`), backend для них не нужен.
+`testDebugUnitTest` без имени модуля запускает unit-тесты всех Android-модулей. `npm run build` заодно проверяет типы TypeScript. Тесты web работают с поддельными сервером, WebSocket и звонком (`web/src/testing`), backend для них не нужен. Тесты `shared` тоже обходятся без сервера: поддельные HTTP (`MockEngine`) и WebSocket — в `shared/src/commonTest/.../testing`, поддельный звонок — в `BlindHelpControllerTest`.
 
-Доступность Android: в Compose-тесте каждого экрана вызывайте `assertScreenIsAccessible()` (`android/app/src/test/.../testing/AccessibilityChecks.kt`) — тест упадёт, если у кнопки нет описания для TalkBack или она меньше 48 dp.
+Доступность Android проверяется в двух местах:
+
+- в Robolectric-тесте каждого экрана вызывайте `assertScreenIsAccessible()` (`android/testing`) — тест упадёт, если у кнопки нет описания для TalkBack или она меньше 48 dp;
+- UI-тесты на эмуляторе (`android/app/src/androidTest`) прогоняют каждый экран через Accessibility Test Framework в светлой и тёмной теме: контраст текста, размеры, подписи, повторяющиеся описания. Новый экран — добавьте его в `ScreensAccessibilityTest`. Запуск при включённом эмуляторе:
+
+  ```bash
+  ./gradlew :android:app:connectedDebugAndroidTest
+  ```
+
+  Запускайте не чаще раза в минуту: Gradle ещё несколько секунд после окончания прогона удаляет тестовое приложение с эмулятора и может удалить его посреди следующего прогона (тест падает с «Test failed with status -1»).
+
+Голос TalkBack автоматически не проверить: перед сборкой для тестировщиков пройдите экраны с включённым TalkBack по чек-листу [docs/talkback-checklist.md](docs/talkback-checklist.md).
 
 Проверка контракта API (из корня репозитория; правила — в `redocly.yaml`):
 

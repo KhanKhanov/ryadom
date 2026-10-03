@@ -92,6 +92,7 @@ data class AppConfig(
                         maxRequestsPerWindow = requests.getInt("rateLimit.maxRequests"),
                         rateLimitWindow = requests.getDuration("rateLimit.window"),
                         maxCallDuration = requests.getDuration("maxCallDuration"),
+                        joinTimeout = requests.getDuration("joinTimeout"),
                     ),
                 realtime =
                     RealtimeConfig(
@@ -209,6 +210,8 @@ data class RequestsConfig(
     val rateLimitWindow: Duration,
     /** Через сколько закрыть звонок, о завершении которого LiveKit не сообщил. */
     val maxCallDuration: Duration,
+    /** Через сколько после принятия закрыть запрос, в комнату звонка которого никто не вошёл. */
+    val joinTimeout: Duration,
 )
 
 /** Настройки WebSocket `/ws`. */

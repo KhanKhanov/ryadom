@@ -2,5 +2,23 @@
 <!-- Строки по умолчанию — на русском. Английский перевод: values-en/strings.xml. -->
 <resources>
     <string name="app_name">Рядом</string>
-    <string name="welcome_description">Видеопомощь незрячим. Приложение в разработке.</string>
+
+    <string name="login_title">Вход</string>
+    <string name="login_intro">Видеопомощь незрячим: волонтёр посмотрит через камеру вашего телефона и подскажет, что перед вами.</string>
+    <string name="login_yandex">Войти через Яндекс ID</string>
+    <string name="login_not_configured">Вход через Яндекс ID не настроен в этой сборке приложения.</string>
+    <string name="login_dev_label">Логин для разработки</string>
+    <string name="login_dev">Войти без Яндекс ID (для разработки)</string>
+    <string name="login_reason_expired">Сеанс истёк. Войдите снова.</string>
+    <string name="login_reason_banned">Ваша учётная запись заблокирована.</string>
+
+    <string name="role_title">Кто вы?</string>
+    <string name="role_blind">Мне нужна помощь</string>
+    <string name="role_volunteer">Я хочу помогать</string>
+
+    <string name="offline_title">Нет связи</string>
+    <string name="offline_retry">Повторить</string>
+
+    <string name="volunteer_not_yet">Приложение для волонтёров появится позже. Пока помогайте через сайт «Рядом». Если помощь нужна вам самим, нажмите «Мне нужна помощь».</string>
+    <string name="role_unsupported">Для вашей роли в приложении пока нет экранов. Пользуйтесь сайтом «Рядом».</string>
 </resources>

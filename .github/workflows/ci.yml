@@ -36,7 +36,40 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v6
-      - run: ./gradlew :android:app:ktlintCheck :android:app:lintDebug :android:app:testDebugUnitTest
+      # Lint приложения проверяет и его модули (checkDependencies = true в android/app/build.gradle.kts).
+      - run: >-
+          ./gradlew
+          :android:app:ktlintCheck :android:core-ui:ktlintCheck :android:feature-call:ktlintCheck
+          :android:feature-help:ktlintCheck :android:testing:ktlintCheck
+          :android:app:lintDebug
+          :android:app:testDebugUnitTest :android:core-ui:testDebugUnitTest :android:feature-call:testDebugUnitTest
+          :android:feature-help:testDebugUnitTest :android:testing:testDebugUnitTest
+
+  android-emulator:
+    name: Android на эмуляторе (Accessibility Test Framework)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      # Сначала сборка, потом эмулятор: так он не ждёт компиляции.
+      - run: ./gradlew :android:app:assembleDebug :android:app:assembleDebugAndroidTest
+      - name: Включить KVM (аппаратное ускорение эмулятора)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # UI-тесты android/app/src/androidTest: проверки доступности экранов (ATF) и хранилище токенов (Keystore).
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: ./gradlew :android:app:connectedDebugAndroidTest
 
   shared-ios:
     name: shared под iOS (без Android-кода)

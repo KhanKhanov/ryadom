@@ -77,6 +77,7 @@ fun testConfig(
             maxRequestsPerWindow = 20,
             rateLimitWindow = Duration.ofHours(1),
             maxCallDuration = Duration.ofHours(3),
+            joinTimeout = Duration.ofMinutes(2),
         ),
     // Короткое ожидание входа, чтобы тест «не прислал auth» не ждал 10 секунд.
     realtime = RealtimeConfig(authTimeout = Duration.ofMillis(500), pingInterval = Duration.ofSeconds(30)),

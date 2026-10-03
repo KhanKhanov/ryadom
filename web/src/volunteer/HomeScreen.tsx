@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import type { RealtimeStatus } from '../api/realtime'
 import type { HelpRequest, UserProfile } from '../api/types'
+import { SwitchToBlindPanel } from '../auth/RoleScreens'
 import { format, type StringKey, type Strings } from '../i18n'
 import { Button, ErrorMessage, ScreenHeading } from '../ui/components'
 import { useAnnounce, useServices, useStrings } from '../ui/context'
@@ -38,6 +39,7 @@ export function HomeScreen(props: HomeScreenProps) {
         <p>{t.soundHint}</p>
         <Button onClick={() => ringer.test()}>{t.soundTest}</Button>
       </div>
+      <SwitchToBlindPanel onProfileChange={props.onProfileChange} />
     </section>
   )
 }

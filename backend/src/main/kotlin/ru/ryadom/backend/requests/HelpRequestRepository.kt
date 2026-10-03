@@ -181,6 +181,16 @@ class HelpRequestRepository(
                 .map { it.toRecord() }
         }
 
+    /** Принятые раньше [time] запросы, в комнату звонка которых ещё никто не вошёл (`accepted`). */
+    suspend fun findUnjoinedCallsAcceptedBefore(time: Instant): List<HelpRequestRecord> =
+        db.query {
+            HelpRequestsTable
+                .selectAll()
+                .where {
+                    (HelpRequestsTable.status eq RequestStatus.ACCEPTED.dbValue) and (HelpRequestsTable.acceptedAt less time.toDb())
+                }.map { it.toRecord() }
+        }
+
     /**
      * Меняет статус на [to], только если текущий — один из [from]. Для окончательных статусов
      * запоминает время закрытия. Возвращает обновлённый запрос или `null`, если статус уже другой.

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Общие строки всех экранов. По умолчанию — русский, английский — values-en/strings.xml. -->
+<resources>
+    <string name="error_network">Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.</string>
+    <string name="error_too_many_requests">Слишком много вызовов за последний час. Попробуйте позже.</string>
+    <string name="error_login_failed">Не удалось войти. Попробуйте ещё раз.</string>
+    <string name="error_provider_unavailable">Яндекс ID сейчас недоступен. Попробуйте позже.</string>
+    <string name="error_login_unavailable">Этот способ входа сейчас недоступен.</string>
+    <string name="error_unknown">Что-то пошло не так. Попробуйте ещё раз.</string>
+    <string name="error_active_request">Сначала завершите текущий запрос или звонок.</string>
+
+    <string name="connection_lost">Нет связи с сервером. Переподключаемся…</string>
+    <string name="loading">Загрузка…</string>
+
+    <string name="logout">Выйти</string>
+    <string name="logout_confirm_title">Выйти из приложения?</string>
+    <string name="logout_confirm_text">Чтобы снова попросить помощи, нужно будет войти ещё раз.</string>
+    <string name="cancel">Отмена</string>
+</resources>

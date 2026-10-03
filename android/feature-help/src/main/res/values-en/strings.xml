@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="help_request">Call a volunteer</string>
+    <string name="help_searching">Looking for a volunteer…</string>
+    <string name="help_cancel">Cancel search</string>
+
+    <string name="help_no_answer">Nobody answered right now. Please try again.</string>
+    <string name="help_no_answer_night">Nobody answered right now: at night most volunteers do not take calls. Try again or in the morning.</string>
+    <string name="help_cancelled">Search cancelled.</string>
+    <string name="help_volunteer_left_before_call">The volunteer could not join. Call for help again and we will find someone else.</string>
+    <string name="help_call_ended">Call ended.</string>
+
+    <string name="help_call_connecting">A volunteer accepted. Connecting…</string>
+    <string name="help_call_waiting">Waiting for the volunteer to join…</string>
+    <string name="help_call_active">The volunteer is on the line. Point the camera at what you want to show.</string>
+    <string name="help_call_active_no_camera">The volunteer is on the line.</string>
+    <string name="help_call_volunteer_left">The volunteer disconnected. Wait a little or end the call.</string>
+    <string name="help_call_reconnecting">Connection lost. Reconnecting…</string>
+    <string name="help_call_disconnected">The call dropped. End the call and call for help again.</string>
+    <string name="help_camera_blocked">No access to the camera: the volunteer cannot see you. Allow access in Settings.</string>
+    <string name="help_microphone_blocked">No access to the microphone: the volunteer cannot hear you. Allow access in Settings.</string>
+
+    <string name="help_rating_question">Call ended. Did you get the help you needed?</string>
+    <string name="help_rating_yes">Yes, it helped</string>
+    <string name="help_rating_no">No</string>
+    <string name="help_rating_skip">Skip</string>
+    <string name="help_rating_thanks">Thank you for your answer!</string>
+
+    <string name="help_permissions_needed">To let the volunteer see and hear you, allow the app to use the camera and microphone.</string>
+    <string name="help_open_settings">Open settings</string>
+</resources>

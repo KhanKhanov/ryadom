@@ -194,16 +194,50 @@ class LiveKitTest {
         }
 
     @Test
+    fun callNobodyJoinedIsClosedAfterJoinTimeout() =
+        apiTest {
+            val call = acceptedCall()
+            val blindEvents = connect(call.blind)
+            val volunteerEvents = connect(call.volunteer)
+
+            clock.advance(Duration.ofMinutes(2))
+            tick()
+            assertEquals(RequestStatus.ACCEPTED, getRequest(call.blind, call.request.id).body<HelpRequest>().status)
+
+            clock.advance(Duration.ofSeconds(1))
+            tick()
+
+            val ended = blindEvents.nextOf<ServerEvent.RequestEnded>().request
+            assertEquals(RequestStatus.ENDED, ended.status)
+            assertEquals(ended, volunteerEvents.nextOf<ServerEvent.RequestEnded>().request)
+            assertEquals(HttpStatusCode.NoContent, currentRequest(call.volunteer).status, "волонтёр снова может принимать вызовы")
+            assertEquals(RequestStatus.SEARCHING, requestHelp(call.blind).status, "незрячий может позвать помощь снова")
+        }
+
+    @Test
+    fun joinedCallIsNotClosedByJoinTimeout() =
+        apiTest {
+            val call = acceptedCall()
+            sendLiveKitWebhook(FakeLiveKit.event("participant_joined", call.request.id, call.blind.user.id))
+
+            clock.advance(Duration.ofMinutes(10))
+            tick()
+
+            assertEquals(RequestStatus.IN_CALL, getRequest(call.blind, call.request.id).body<HelpRequest>().status)
+        }
+
+    @Test
     fun forgottenCallIsClosedBySafetyTimeout() =
         apiTest {
             val call = acceptedCall()
             val blindEvents = connect(call.blind)
+            sendLiveKitWebhook(FakeLiveKit.event("participant_joined", call.request.id, call.blind.user.id))
 
             clock.advance(Duration.ofHours(3))
             tick()
             // Access-токен живёт 15 минут — входим заново, как сделало бы приложение.
             val blind = devLogin("blind-1")
-            assertEquals(RequestStatus.ACCEPTED, getRequest(blind, call.request.id).body<HelpRequest>().status)
+            assertEquals(RequestStatus.IN_CALL, getRequest(blind, call.request.id).body<HelpRequest>().status)
 
             clock.advance(Duration.ofSeconds(1))
             tick()

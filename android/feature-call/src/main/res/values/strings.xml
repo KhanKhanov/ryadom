@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Строки звонка — общие для незрячего и волонтёра. Английский — values-en/strings.xml. -->
+<resources>
+    <string name="call_end">Завершить звонок</string>
+    <string name="call_ending">Завершаем звонок…</string>
+    <string name="call_microphone_off">Выключить микрофон</string>
+    <string name="call_microphone_on">Включить микрофон</string>
+    <string name="call_microphone_blocked">Нет доступа к микрофону</string>
+    <string name="call_microphone_muted">Ваш микрофон выключен.</string>
+
+    <string name="call_notification_channel">Звонок</string>
+    <string name="call_notification_searching">Ищем волонтёра</string>
+    <string name="call_notification_call">Идёт звонок</string>
+</resources>

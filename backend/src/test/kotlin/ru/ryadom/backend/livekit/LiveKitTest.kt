@@ -152,6 +152,48 @@ class LiveKitTest {
         }
 
     @Test
+    fun volunteerHangsUpDuringCall() =
+        apiTest {
+            val call = acceptedCall()
+            val blindEvents = connect(call.blind)
+            val volunteerEvents = connect(call.volunteer)
+            sendLiveKitWebhook(FakeLiveKit.event("participant_joined", call.request.id, call.blind.user.id))
+            clock.advance(Duration.ofMinutes(2))
+
+            val response = cancelRequest(call.volunteer, call.request.id)
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val ended = response.body<HelpRequest>()
+            assertEquals(RequestStatus.ENDED, ended.status)
+            assertEquals("2026-09-30T10:02:00Z", ended.endedAt)
+            assertNull(ended.call)
+            assertEquals(ended, blindEvents.nextOf<ServerEvent.RequestEnded>().request, "незрячий выходит из комнаты и видит экран оценки")
+            assertEquals(ended, volunteerEvents.nextOf<ServerEvent.RequestEnded>().request, "другие вкладки волонтёра тоже узнают")
+            assertEquals(HttpStatusCode.NoContent, currentRequest(call.volunteer).status, "волонтёр снова может принимать вызовы")
+            assertEquals(HttpStatusCode.NoContent, currentRequest(call.blind).status)
+
+            // Повторный вызов и запоздавший room_finished ничего не меняют.
+            assertEquals(ended, cancelRequest(call.volunteer, call.request.id).body<HelpRequest>())
+            sendLiveKitWebhook(FakeLiveKit.event("room_finished", call.request.id))
+            blindEvents.assertNoEvents()
+            volunteerEvents.assertNoEvents()
+        }
+
+    @Test
+    fun volunteerEndsCallBeforeBlindJoins() =
+        apiTest {
+            val call = acceptedCall()
+            val blindEvents = connect(call.blind)
+
+            val ended = cancelRequest(call.volunteer, call.request.id).body<HelpRequest>()
+
+            assertEquals(RequestStatus.ENDED, ended.status)
+            assertEquals(ended, blindEvents.nextOf<ServerEvent.RequestEnded>().request)
+            // Незрячий тоже не может «отменить» уже завершённый запрос — ответ тот же.
+            assertEquals(ended, cancelRequest(call.blind, call.request.id).body<HelpRequest>())
+        }
+
+    @Test
     fun forgottenCallIsClosedBySafetyTimeout() =
         apiTest {
             val call = acceptedCall()

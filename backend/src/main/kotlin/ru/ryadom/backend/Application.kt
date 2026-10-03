@@ -33,12 +33,21 @@ import ru.ryadom.backend.db.AppDatabase
 import ru.ryadom.backend.errors.installErrorHandling
 import ru.ryadom.backend.errors.withoutMessages
 import ru.ryadom.backend.livekit.LiveKitService
+import ru.ryadom.backend.push.DeviceRepository
+import ru.ryadom.backend.push.DeviceService
+import ru.ryadom.backend.push.FcmSender
+import ru.ryadom.backend.push.PushNotifier
+import ru.ryadom.backend.push.PushSender
+import ru.ryadom.backend.push.RuStoreSender
+import ru.ryadom.backend.push.WebPushSender
+import ru.ryadom.backend.push.pushRoutes
 import ru.ryadom.backend.realtime.RealtimeHub
 import ru.ryadom.backend.realtime.realtimeRoutes
 import ru.ryadom.backend.requests.HelpRequestRepository
 import ru.ryadom.backend.requests.HelpRequestService
 import ru.ryadom.backend.requests.RequestDispatcher
 import ru.ryadom.backend.requests.RequestLocks
+import ru.ryadom.backend.requests.RequestPushes
 import ru.ryadom.backend.requests.VolunteerMatcher
 import ru.ryadom.backend.requests.liveKitWebhookRoutes
 import ru.ryadom.backend.requests.requestRoutes
@@ -47,6 +56,7 @@ import ru.ryadom.backend.users.UserRepository
 import ru.ryadom.backend.users.profileRoutes
 import ru.ryadom.shared.api.ApiPaths
 import ru.ryadom.shared.api.HealthResponse
+import ru.ryadom.shared.api.PushProvider
 import java.time.Clock
 import kotlin.time.toKotlinDuration
 
@@ -61,23 +71,33 @@ fun main() {
 class AppComponents(
     /** Поиск волонтёров. В тестах фоновая проверка выключена, и тест вызывает `dispatcher.tick()` сам. */
     val dispatcher: RequestDispatcher,
+    /** Рассылка push: тест дожидается её окончания (`awaitIdle`). */
+    val push: PushNotifier,
 )
 
 /**
  * Сборка приложения. Вынесена отдельно, чтобы тесты поднимали сервер без сети,
  * со своими часами [clock] и поддельным HTTP-клиентом [httpClient] для Яндекс ID.
  * @param runBackgroundJobs запускать ли фоновую проверку волн и таймаутов (в тестах — нет).
+ * @param pushSenders отправители push по каналам; по умолчанию — настоящие, для каналов, настроенных в [config].
  */
 fun Application.module(
     config: AppConfig,
     clock: Clock = Clock.systemUTC(),
     httpClient: HttpClient = defaultHttpClient(),
     runBackgroundJobs: Boolean = true,
+    pushSenders: Map<PushProvider, PushSender>? = null,
 ): AppComponents {
     val database = AppDatabase(config.database)
+    // Отдельный клиент для push-сервисов: адреса подписок Web Push присылают браузеры, поэтому без редиректов.
+    val pushHttpClient = defaultHttpClient(followRedirects = false)
+    val deviceRepository = DeviceRepository(database)
+    val push = PushNotifier(deviceRepository, pushSenders ?: realPushSenders(config.push, pushHttpClient, clock))
     monitor.subscribe(ApplicationStopped) {
+        push.close()
         database.close()
         httpClient.close()
+        pushHttpClient.close()
     }
 
     val users = UserRepository(database)
@@ -92,13 +112,16 @@ fun Application.module(
     val liveKit = LiveKitService(config.liveKit, clock)
     val locks = RequestLocks()
     val matcher = VolunteerMatcher(config.profile)
+    val pushes = RequestPushes(push, config.matching.searchTimeout, clock)
     val dispatcher =
-        RequestDispatcher(helpRequests, users, matcher, hub, locks, config.matching, config.requests, clock)
-    val requests = HelpRequestService(helpRequests, users, dispatcher, hub, liveKit, locks, config.requests, clock)
+        RequestDispatcher(helpRequests, users, matcher, hub, pushes, locks, config.matching, config.requests, clock)
+    val requests = HelpRequestService(helpRequests, users, dispatcher, hub, pushes, liveKit, locks, config.requests, clock)
+    val devices = DeviceService(deviceRepository, users, config.push, clock)
 
     if (config.auth.devLoginEnabled) {
         log.warn("Dev login (POST /auth/dev) is ENABLED. Never enable it on a public server.")
     }
+    log.info("Push channels: {}", push.providers.ifEmpty { "none" })
 
     install(ContentNegotiation) {
         json(
@@ -129,13 +152,26 @@ fun Application.module(
         authRoutes(auth, yandex, config.auth.devLoginEnabled)
         profileRoutes(profiles)
         requestRoutes(requests)
+        pushRoutes(devices)
         liveKitWebhookRoutes(requests, liveKit)
         realtimeRoutes(hub, accessTokens, users, config.realtime, clock)
     }
 
     if (runBackgroundJobs) launchDispatcher(dispatcher, config.matching)
-    return AppComponents(dispatcher)
+    return AppComponents(dispatcher, push)
 }
+
+/** Отправители для каналов push, настроенных на сервере; ненастроенного канала просто нет. */
+private fun realPushSenders(
+    settings: PushSettings,
+    http: HttpClient,
+    clock: Clock,
+): Map<PushProvider, PushSender> =
+    buildMap {
+        settings.webPush?.let { put(PushProvider.WEB_PUSH, WebPushSender(it, http, clock)) }
+        settings.fcm?.let { put(PushProvider.FCM, FcmSender(it, http, clock)) }
+        settings.ruStore?.let { put(PushProvider.RUSTORE, RuStoreSender(it, http)) }
+    }
 
 /** Раз в `matching.checkInterval` отправляет очередные волны и закрывает просроченные поиски и звонки. */
 private fun Application.launchDispatcher(
@@ -160,9 +196,10 @@ private fun Application.launchDispatcher(
 /** Максимальный размер сообщения от клиента в WebSocket. */
 private const val MAX_CLIENT_FRAME_BYTES = 64L * 1024
 
-/** HTTP-клиент для внешних сервисов входа: короткие таймауты, чтобы вход не зависал. */
-private fun defaultHttpClient() =
+/** HTTP-клиент для внешних сервисов (вход, push): короткие таймауты, чтобы вход и рассылка не зависали. */
+private fun defaultHttpClient(followRedirects: Boolean = true) =
     HttpClient(CIO) {
+        this.followRedirects = followRedirects
         install(HttpTimeout) {
             connectTimeoutMillis = 5_000
             requestTimeoutMillis = 10_000

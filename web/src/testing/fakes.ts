@@ -4,8 +4,10 @@ import { vi, type Mock } from 'vitest'
 import { ApiClient } from '../api/client'
 import type { RealtimeEvent, RealtimeEventType, RealtimeHandlers, RealtimeStatus } from '../api/realtime'
 import { createLock, MemoryStorage, SessionStore } from '../api/session'
+import type { WebPushSubscription } from '../api/types'
 import { initialCallState, type CallFactory, type CallOptions, type CallSession, type CallState } from '../call/call'
 import type { AppConfig } from '../config'
+import type { PushService, PushSupport } from '../push/webPush'
 import type { AppServices } from '../ui/context'
 import type { Ringer } from '../ui/ringer'
 
@@ -218,6 +220,64 @@ export class FakeCalls {
   }
 }
 
+/**
+ * Поддельный Web Push браузера: тест задаёт, что умеет браузер, что ответит пользователь на вопрос
+ * о разрешении, и видит, какие уведомления о вызовах показаны.
+ */
+export class FakePushService implements PushService {
+  supportValue: PushSupport = 'supported'
+  braveValue = false
+  /** Браузер не смог подключиться к своему push-сервису (в Brave — выключен по умолчанию). */
+  serviceUnavailable = false
+  permissionValue: NotificationPermission = 'default'
+  /** Что ответит пользователь, когда браузер спросит разрешение. */
+  answer: 'granted' | 'denied' = 'granted'
+  subscription: WebPushSubscription | null = null
+  /** С каким ключом сервера сделана подписка. */
+  subscribedWith: string | null = null
+  /** Показанные уведомления о вызовах (id запросов). */
+  notifications: string[] = []
+  private readonly clickListeners = new Set<() => void>()
+
+  support() {
+    return this.supportValue
+  }
+  isBrave() {
+    return this.braveValue
+  }
+  permission() {
+    return this.permissionValue
+  }
+  async current(publicKey: string) {
+    if (this.subscription && this.subscribedWith !== publicKey) this.subscription = null
+    return this.subscription
+  }
+  async subscribe(publicKey: string) {
+    if (this.permissionValue === 'default') this.permissionValue = this.answer
+    if (this.permissionValue !== 'granted') throw new DOMException('Permission denied', 'NotAllowedError')
+    if (this.serviceUnavailable) throw new DOMException('Registration failed - push service error', 'AbortError')
+    this.subscribedWith = publicKey
+    this.subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/browser-1', p256dh: 'BKey', auth: 'secret' }
+    return this.subscription
+  }
+  async unsubscribe() {
+    this.subscription = null
+  }
+  async closeNotifications(shouldClose: (requestId: string) => boolean) {
+    this.notifications = this.notifications.filter((requestId) => !shouldClose(requestId))
+  }
+  onNotificationClick(listener: () => void) {
+    this.clickListeners.add(listener)
+    return () => {
+      this.clickListeners.delete(listener)
+    }
+  }
+  /** Пользователь нажал на уведомление, и браузер показал вкладку. */
+  click() {
+    for (const listener of this.clickListeners) listener()
+  }
+}
+
 export type FakeRinger = Ringer & { start: Mock<() => void>; stop: Mock<() => void>; test: Mock<() => void> }
 
 export function fakeRinger(): FakeRinger {
@@ -237,6 +297,7 @@ export type TestServices = AppServices & {
   realtime: FakeRealtime
   calls: FakeCalls
   ringer: FakeRinger
+  push: FakePushService
   storage: MemoryStorage
   navigate: Mock<(url: string) => void>
 }
@@ -259,6 +320,7 @@ export function createTestServices(options: { config?: Partial<AppConfig>; logge
     connectRealtime: realtime.connect,
     createCall: calls.create,
     ringer: fakeRinger(),
+    push: new FakePushService(),
     tabStorage: new MemoryStorage(),
     navigate: vi.fn<(url: string) => void>(),
     now: () => now,

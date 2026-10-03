@@ -3,12 +3,16 @@ import { parseHelpRequest, type HelpRequest } from '../api/types'
 import { callJson, createTestServices, errorResponse, jsonResponse, profileJson, requestJson, type TestServices } from '../testing/fakes'
 import { announced, renderApp } from '../testing/render'
 
-/** Волонтёр уже входил; сервер отвечает на профиль и текущий запрос. */
-async function openVolunteerPage(options: { profile?: Record<string, unknown>; now?: Date; current?: Response } = {}) {
+/** Волонтёр уже входил; сервер отвечает на профиль, текущий запрос и ожидающие вызовы. */
+async function openVolunteerPage(
+  options: { profile?: Record<string, unknown>; now?: Date; current?: Response; prepare?: (services: TestServices) => void } = {},
+) {
   const services = createTestServices({ loggedIn: true, now: options.now })
   services.backend
     .on('GET', '/me', jsonResponse(200, profileJson(options.profile)))
     .on('GET', '/requests/current', options.current ?? jsonResponse(204))
+    .on('GET', '/requests/incoming', jsonResponse(200, { requests: [] }))
+  options.prepare?.(services)
   const rendered = renderApp(services)
   await screen.findByRole('heading', { name: 'Кабинет волонтёра' })
   // Заголовок появляется чуть раньше, чем экран открывает соединение событий (эффект React).
@@ -243,12 +247,62 @@ describe('volunteer page', () => {
 
   it('rechecks incoming calls after reconnecting: events without a connection are not repeated', async () => {
     const { services } = await openVolunteerPage()
-    services.backend.on('GET', '/requests/request-1', jsonResponse(200, requestJson({ status: 'no_answer' })))
     incoming(services)
+    services.push.notifications = ['request-1']
+
+    // Пока связи не было, вызов закрылся, а пришёл другой.
+    services.backend.on('GET', '/requests/incoming', jsonResponse(200, { requests: [requestJson({ id: 'request-2', language: 'en' })] }))
+    act(() => services.realtime.ready())
+
+    const card = await screen.findByText('Язык: английский')
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(card).toBeInTheDocument()
+    expect(announced('assertive')).toBe('Входящий вызов: нужна помощь')
+    // Уведомление о закрытом вызове убрано.
+    await waitFor(() => expect(services.push.notifications).toEqual([]))
+  })
+
+  it('does not bring back a call skipped in this tab', async () => {
+    const { services, user } = await openVolunteerPage()
+    incoming(services)
+    await user.click(screen.getByRole('button', { name: 'Пропустить' }))
+
+    services.backend.on('GET', '/requests/incoming', jsonResponse(200, { requests: [requestJson()] }))
+    act(() => services.realtime.ready())
+
+    await waitFor(() => expect(services.backend.calls('GET', '/requests/incoming').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
+  })
+
+  it('shows calls waiting for an answer when the page opens from a notification', async () => {
+    const { services } = await openVolunteerPage({
+      prepare: (s) => s.backend.on('GET', '/requests/incoming', jsonResponse(200, { requests: [requestJson()] })),
+    })
 
     act(() => services.realtime.ready())
 
-    await waitFor(() => expect(screen.queryByRole('listitem')).not.toBeInTheDocument())
+    expect(await screen.findByRole('listitem')).toHaveTextContent('Нужна помощь')
+    expect(services.ringer.start).toHaveBeenCalled()
+  })
+
+  it('rechecks calls when the volunteer taps a notification', async () => {
+    const { services } = await openVolunteerPage()
+    act(() => services.realtime.ready())
+    services.backend.on('GET', '/requests/incoming', jsonResponse(200, { requests: [requestJson()] }))
+
+    act(() => services.push.click())
+
+    expect(await screen.findByRole('listitem')).toHaveTextContent('Нужна помощь')
+  })
+
+  it('removes the notification of a call that another volunteer accepted', async () => {
+    const { services } = await openVolunteerPage()
+    incoming(services)
+    services.push.notifications = ['request-1', 'request-2']
+
+    act(() => services.realtime.emit('request.taken', helpRequest({ status: 'accepted' })))
+
+    await waitFor(() => expect(services.push.notifications).toEqual(['request-2']))
   })
 
   it('shows quiet hours and says when calls will not come', async () => {
@@ -291,5 +345,145 @@ describe('volunteer page', () => {
     const { services, user } = await openVolunteerPage()
     await user.click(screen.getByRole('button', { name: 'Проверить звук' }))
     expect(services.ringer.test).toHaveBeenCalledOnce()
+  })
+})
+
+describe('call notifications (Web Push)', () => {
+  const serverKey = 'BServerVapidKey'
+
+  /** Кабинет волонтёра на сервере с настроенным Web Push. */
+  function openWithPush(prepare: (services: TestServices) => void = () => undefined) {
+    return openVolunteerPage({
+      prepare: (services) => {
+        services.backend
+          .on('GET', '/push/config', jsonResponse(200, { webPushPublicKey: serverKey }))
+          .on('POST', '/devices', jsonResponse(200, { id: 'device-1' }))
+          .on('DELETE', '/devices/device-1', jsonResponse(204))
+        prepare(services)
+      },
+    })
+  }
+
+  function panel() {
+    return screen.getByRole('region', { name: 'Уведомления о вызовах' })
+  }
+
+  it('turns notifications on and saves the subscription on the server', async () => {
+    const { services, user } = await openWithPush()
+
+    await user.click(await screen.findByRole('button', { name: 'Включить уведомления' }))
+
+    expect(await within(panel()).findByText('Уведомления включены: вызов придёт, даже когда вкладка закрыта.')).toBeInTheDocument()
+    expect(announced()).toBe('Уведомления включены')
+    expect(services.push.subscribedWith).toBe(serverKey)
+    expect(services.backend.calls('POST', '/devices')[0].body).toEqual({
+      provider: 'webpush',
+      token: 'https://fcm.googleapis.com/fcm/send/browser-1',
+      webPush: { p256dh: 'BKey', auth: 'secret' },
+    })
+  })
+
+  it('explains how to allow notifications when the browser blocked them', async () => {
+    const { services, user } = await openWithPush((s) => (s.push.answer = 'denied'))
+
+    await user.click(await screen.findByRole('button', { name: 'Включить уведомления' }))
+
+    expect(await within(panel()).findByText(/Браузер запретил уведомления для этого сайта/)).toBeInTheDocument()
+    expect(announced()).toMatch(/Браузер запретил уведомления/)
+    expect(services.backend.calls('POST', '/devices')).toHaveLength(0)
+  })
+
+  it('renews the subscription of this browser on every visit', async () => {
+    const { services } = await openWithPush((s) => {
+      s.push.permissionValue = 'granted'
+      s.push.subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/old', p256dh: 'BKey', auth: 'secret' }
+      s.push.subscribedWith = serverKey
+    })
+
+    expect(await within(panel()).findByRole('button', { name: 'Выключить уведомления' })).toBeInTheDocument()
+    expect(services.backend.calls('POST', '/devices')[0].body).toMatchObject({ token: 'https://fcm.googleapis.com/fcm/send/old' })
+  })
+
+  it('turns notifications off', async () => {
+    const { services, user } = await openWithPush((s) => {
+      s.push.permissionValue = 'granted'
+      s.push.subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/old', p256dh: 'BKey', auth: 'secret' }
+      s.push.subscribedWith = serverKey
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Выключить уведомления' }))
+
+    expect(await within(panel()).findByRole('button', { name: 'Включить уведомления' })).toBeInTheDocument()
+    expect(announced()).toBe('Уведомления выключены')
+    expect(services.backend.calls('DELETE', '/devices/device-1')).toHaveLength(1)
+    expect(services.push.subscription).toBeNull()
+  })
+
+  it('says when the server cannot send notifications to this browser', async () => {
+    const { services, user } = await openWithPush((s) => s.backend.on('POST', '/devices', errorResponse(400, 'invalid_request')))
+
+    await user.click(await screen.findByRole('button', { name: 'Включить уведомления' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Сервер пока не умеет отправлять уведомления в этот браузер.')
+    expect(services.push.subscription).toBeNull()
+  })
+
+  it('tells Brave users which setting turns the push service on', async () => {
+    const { services, user } = await openWithPush((s) => {
+      s.push.braveValue = true
+      s.push.serviceUnavailable = true
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Включить уведомления' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('brave://settings/privacy')
+    expect(services.backend.calls('POST', '/devices')).toHaveLength(0)
+  })
+
+  it('explains when the browser cannot reach its push service', async () => {
+    const { user } = await openWithPush((s) => (s.push.serviceUnavailable = true))
+
+    await user.click(await screen.findByRole('button', { name: 'Включить уведомления' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Браузер не смог подключиться к своему сервису уведомлений.')
+  })
+
+  it('warns that on a computer the browser must keep running', async () => {
+    await openWithPush()
+
+    expect(await within(panel()).findByText(/закрыть можно вкладку, но не сам браузер/)).toBeInTheDocument()
+  })
+
+  it('tells iPhone users to add the site to the Home Screen', async () => {
+    await openWithPush((s) => (s.push.supportValue = 'needsHomeScreen'))
+
+    expect(await within(panel()).findByText(/добавить сайт на экран «Домой»/)).toBeInTheDocument()
+    expect(within(panel()).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('has no notifications panel when the server has no Web Push', async () => {
+    const { services } = await openVolunteerPage({
+      prepare: (s) => s.backend.on('GET', '/push/config', jsonResponse(200, { webPushPublicKey: null })),
+    })
+
+    await waitFor(() => expect(services.backend.calls('GET', '/push/config')).toHaveLength(1))
+    expect(screen.queryByRole('region', { name: 'Уведомления о вызовах' })).not.toBeInTheDocument()
+  })
+
+  it('stops notifications to this browser on sign-out', async () => {
+    const { services, user } = await openWithPush((s) => {
+      s.push.permissionValue = 'granted'
+      s.push.subscription = { endpoint: 'https://fcm.googleapis.com/fcm/send/old', p256dh: 'BKey', auth: 'secret' }
+      s.push.subscribedWith = serverKey
+      s.backend.on('POST', '/auth/logout', jsonResponse(204))
+    })
+    await within(await screen.findByRole('region', { name: 'Уведомления о вызовах' })).findByRole('button', { name: 'Выключить уведомления' })
+
+    await user.click(screen.getByRole('button', { name: 'Выйти' }))
+
+    expect(await screen.findByRole('heading', { name: 'Вход для волонтёров' })).toBeInTheDocument()
+    expect(services.push.subscription).toBeNull()
+    const order = services.backend.requests.map((r) => `${r.method} ${r.path}`)
+    expect(order.indexOf('DELETE /devices/device-1')).toBeLessThan(order.indexOf('POST /auth/logout'))
   })
 })

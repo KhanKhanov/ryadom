@@ -4,8 +4,11 @@ import io.ktor.http.HttpStatusCode
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.exists
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNull
+import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.exceptions.ExposedSQLException
 import org.jetbrains.exposed.v1.jdbc.JdbcTransaction
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -14,6 +17,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import ru.ryadom.backend.db.AppDatabase
 import ru.ryadom.backend.db.AuthIdentitiesTable
+import ru.ryadom.backend.db.DevicesTable
 import ru.ryadom.backend.db.UNIQUE_VIOLATION
 import ru.ryadom.backend.db.UsersTable
 import ru.ryadom.backend.db.dbValue
@@ -27,6 +31,7 @@ import ru.ryadom.shared.api.ApiErrorCodes
 import ru.ryadom.shared.api.Gender
 import ru.ryadom.shared.api.GenderPreference
 import ru.ryadom.shared.api.Language
+import ru.ryadom.shared.api.PushProvider
 import ru.ryadom.shared.api.Role
 import java.time.Instant
 import java.time.LocalTime
@@ -83,16 +88,32 @@ class UserRepository(
     suspend fun findById(id: Uuid): UserRecord? = db.query { findUser(id) }
 
     /**
-     * Волонтёры из [ids], которым сейчас можно отправить вызов: роль `volunteer`, не заблокированы,
-     * вызовы включены. Остальные правила подбора — в `requests.VolunteerMatcher`.
+     * Волонтёры, до которых сейчас дойдёт вызов: с открытым WebSocket ([connected]) или с устройством
+     * в одном из каналов push [pushProviders]. Только роль `volunteer`, не заблокированные, с включёнными
+     * вызовами, кроме [except] (автора запроса). Остальные правила подбора — в `requests.VolunteerMatcher`.
      */
-    suspend fun findAvailableVolunteers(ids: Collection<Uuid>): List<UserRecord> {
-        if (ids.isEmpty()) return emptyList()
+    suspend fun findReachableVolunteers(
+        connected: Collection<Uuid>,
+        pushProviders: Set<PushProvider>,
+        except: Uuid,
+    ): List<UserRecord> {
+        if (connected.isEmpty() && pushProviders.isEmpty()) return emptyList()
         return db.query {
+            val withDevice =
+                DevicesTable
+                    .select(DevicesTable.id)
+                    .where { (DevicesTable.userId eq UsersTable.id) and (DevicesTable.provider inList pushProviders.map { it.dbValue }) }
+            val reachable =
+                when {
+                    pushProviders.isEmpty() -> UsersTable.id inList connected
+                    connected.isEmpty() -> exists(withDevice)
+                    else -> (UsersTable.id inList connected) or exists(withDevice)
+                }
             UsersTable
                 .selectAll()
                 .where {
-                    (UsersTable.id inList ids) and
+                    reachable and
+                        (UsersTable.id neq except) and
                         (UsersTable.role eq Role.VOLUNTEER.dbValue) and
                         UsersTable.bannedAt.isNull() and
                         (UsersTable.notificationsEnabled eq true)

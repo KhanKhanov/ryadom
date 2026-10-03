@@ -1,17 +1,22 @@
-// Клиент REST API (docs/api/openapi.yaml): вход, профиль, запросы помощи.
+// Клиент REST API (docs/api/openapi.yaml): вход, профиль, запросы помощи, push-уведомления.
 
 import { ApiError, ErrorCodes, NetworkError, SessionEndedError, type SessionEndReason } from './errors'
 import type { LockRunner, SessionStore, StoredSession } from './session'
 import {
   isObject,
   parseAuthResponse,
+  parseDeviceId,
   parseHelpRequest,
+  parseIncomingRequests,
   parseProfile,
+  parsePushConfig,
   UnexpectedResponseError,
   type AuthResponse,
   type HelpRequest,
   type ProfileUpdate,
+  type PushConfig,
   type UserProfile,
+  type WebPushSubscription,
 } from './types'
 
 /** Access-токен обновляется заранее, если до его истечения осталось меньше этого. */
@@ -124,6 +129,14 @@ export class ApiClient {
     return parseHelpRequest(await readJson(response))
   }
 
+  /**
+   * Вызовы, которые ждут ответа волонтёра. События без соединения сервер не повторяет, поэтому
+   * список перечитывается после каждого подключения и при нажатии на уведомление.
+   */
+  async getIncomingRequests(): Promise<HelpRequest[]> {
+    return parseIncomingRequests(await this.json('GET', '/requests/incoming'))
+  }
+
   async getRequest(id: string): Promise<HelpRequest> {
     return parseHelpRequest(await this.json('GET', requestPath(id)))
   }
@@ -145,6 +158,27 @@ export class ApiClient {
 
   async rateRequest(id: string, helped: boolean): Promise<void> {
     await this.authorized('POST', `${requestPath(id)}/rating`, { helped })
+  }
+
+  // --- Push-уведомления ---
+
+  async getPushConfig(): Promise<PushConfig> {
+    return parsePushConfig(await this.json('GET', '/push/config'))
+  }
+
+  /** Сохраняет подписку браузера на сервере; возвращает id устройства. Повторная регистрация безопасна. */
+  async registerWebPush(subscription: WebPushSubscription): Promise<string> {
+    const body = {
+      provider: 'webpush',
+      token: subscription.endpoint,
+      webPush: { p256dh: subscription.p256dh, auth: subscription.auth },
+    }
+    return parseDeviceId(await this.json('POST', '/devices', body))
+  }
+
+  /** Выключает push-уведомления на устройстве. Повторный вызов безопасен. */
+  async deleteDevice(id: string): Promise<void> {
+    await this.authorized('DELETE', `/devices/${encodeURIComponent(id)}`)
   }
 
   // --- Токены и сеанс ---

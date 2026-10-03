@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
-import { ApiError, ErrorCodes, SessionEndedError, errorCode } from '../api/errors'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { ErrorCodes, SessionEndedError, errorCode } from '../api/errors'
 import { isCallActive, type UserProfile } from '../api/types'
 import { CallScreen } from '../call/CallScreen'
 import type { StringKey } from '../i18n'
+import { useWebPush } from '../push/useWebPush'
 import { ErrorMessage } from '../ui/components'
 import { useAnnounce, useServices, useStrings } from '../ui/context'
 import { errorKey } from '../ui/errorText'
@@ -22,14 +23,15 @@ type VolunteerScreenProps = {
 export function VolunteerScreen({ profile, onProfileChange }: VolunteerScreenProps) {
   const t = useStrings()
   const announce = useAnnounce()
-  const { api, ringer } = useServices()
+  const { api, ringer, push } = useServices()
   const [state, dispatch] = useReducer(volunteerReducer, initialVolunteerState)
   const [error, setError] = useState<StringKey | null>(null)
   const latest = useLatest(state)
+  const webPush = useWebPush()
 
   /**
-   * События, случившиеся без связи, сервер не повторяет — после каждого подключения
-   * перечитываем идущий звонок и входящие вызовы.
+   * События, случившиеся без связи, сервер не повторяет — после каждого подключения (и когда волонтёр
+   * нажал на уведомление) перечитываем идущий звонок и вызовы, которые ждут ответа.
    */
   async function resync() {
     try {
@@ -40,24 +42,35 @@ export function VolunteerScreen({ profile, onProfileChange }: VolunteerScreenPro
         const call = latest.current.call
         if (call) dispatch({ type: 'requestUpdated', request: await api.getRequest(call.id) })
       }
-      for (const incoming of latest.current.incoming) {
-        try {
-          dispatch({ type: 'requestUpdated', request: await api.getRequest(incoming.id) })
-        } catch (failure) {
-          if (failure instanceof ApiError && failure.code === ErrorCodes.notFound) dispatch({ type: 'skip', requestId: incoming.id })
-          else throw failure
-        }
-      }
+      const incoming = await api.getIncomingRequests()
+      dispatch({ type: 'incomingSynced', requests: incoming })
+      // Уведомления о вызовах, которые уже не ждут ответа или пропущены здесь, больше не нужны.
+      const waiting = new Set(incoming.map((request) => request.id))
+      const skipped = latest.current.skipped
+      push.closeNotifications((requestId) => !waiting.has(requestId) || skipped.includes(requestId)).catch(() => undefined)
     } catch (failure) {
       if (failure instanceof SessionEndedError) return
       // Нет связи: следующая попытка — при следующем подключении WebSocket.
     }
   }
+  const latestResync = useLatest(resync)
 
   const connection = useRealtime({
     onReady: () => void resync(),
     onEvent: (event) => dispatch({ type: 'event', event }),
   })
+
+  // Нажали на уведомление о вызове — вкладка уже открыта, но связь могла пропасть, пока она была в фоне.
+  useEffect(() => push.onNotificationClick(() => void latestResync.current()), [push, latestResync])
+
+  // Вызов исчез со страницы (принят, отменён, пропущен, начался звонок) — уведомление о нём тоже убрать.
+  const shownIncoming = useRef<string[]>([])
+  useEffect(() => {
+    const now = state.incoming.map((request) => request.id)
+    const removed = shownIncoming.current.filter((id) => !now.includes(id))
+    shownIncoming.current = now
+    if (removed.length > 0) push.closeNotifications((requestId) => removed.includes(requestId)).catch(() => undefined)
+  }, [push, state.incoming])
 
   // Сообщения о вызовах звучат голосом; входящий вызов — срочно, с перебиванием диктора.
   useEffect(() => {
@@ -163,6 +176,7 @@ export function VolunteerScreen({ profile, onProfileChange }: VolunteerScreenPro
       profile={profile}
       onProfileChange={onProfileChange}
       connection={connection}
+      push={webPush}
       incoming={state.incoming}
       accepting={state.accepting}
       notice={state.notice?.key ?? null}

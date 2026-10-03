@@ -1,5 +1,6 @@
 package ru.ryadom.backend.requests
 
+import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.and
@@ -161,6 +162,20 @@ class HelpRequestRepository(
                     ((HelpRequestsTable.blindUserId eq userId) and activeRequest()) or
                         ((HelpRequestsTable.acceptedBy eq userId) and ongoingCall())
                 }.empty()
+        }
+
+    /** Идущие поиски, о которых волонтёру приходил вызов и на которые он ещё не отвечал, — от старых к новым. */
+    suspend fun findIncoming(volunteerId: Uuid): List<HelpRequestRecord> =
+        db.query {
+            HelpRequestsTable
+                .join(RequestNotificationsTable, JoinType.INNER, HelpRequestsTable.id, RequestNotificationsTable.requestId)
+                .selectAll()
+                .where {
+                    (RequestNotificationsTable.volunteerId eq volunteerId) and
+                        RequestNotificationsTable.result.isNull() and
+                        (HelpRequestsTable.status eq RequestStatus.SEARCHING.dbValue)
+                }.orderBy(HelpRequestsTable.createdAt)
+                .map { it.toRecord() }
         }
 
     /** Запросы, для которых идёт поиск волонтёра. */

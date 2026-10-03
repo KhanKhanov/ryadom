@@ -22,24 +22,33 @@ import ru.ryadom.backend.AuthConfig
 import ru.ryadom.backend.JwtConfig
 import ru.ryadom.backend.MatchingConfig
 import ru.ryadom.backend.ProfileDefaults
+import ru.ryadom.backend.PushSettings
 import ru.ryadom.backend.RealtimeConfig
 import ru.ryadom.backend.RequestsConfig
+import ru.ryadom.backend.WebPushSettings
 import ru.ryadom.backend.YandexConfig
 import ru.ryadom.backend.module
+import ru.ryadom.backend.push.Base64Url
+import ru.ryadom.backend.push.VapidKeys
 import ru.ryadom.shared.api.ApiError
 import ru.ryadom.shared.api.ApiPaths
 import ru.ryadom.shared.api.AuthResponse
 import ru.ryadom.shared.api.ClientMessage
 import ru.ryadom.shared.api.DevLoginRequest
+import ru.ryadom.shared.api.Device
 import ru.ryadom.shared.api.Language
+import ru.ryadom.shared.api.PushProvider
+import ru.ryadom.shared.api.RegisterDeviceRequest
 import ru.ryadom.shared.api.SelectableRole
 import ru.ryadom.shared.api.ServerEvent
 import ru.ryadom.shared.api.UpdateProfileRequest
 import ru.ryadom.shared.api.UserProfile
+import ru.ryadom.shared.api.WebPushKeys
 import java.time.Duration
 import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.test.assertEquals
+import kotlin.uuid.Uuid
 
 const val TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 
@@ -82,15 +91,59 @@ fun testConfig(
     // Короткое ожидание входа, чтобы тест «не прислал auth» не ждал 10 секунд.
     realtime = RealtimeConfig(authTimeout = Duration.ofMillis(500), pingInterval = Duration.ofSeconds(30)),
     liveKit = FakeLiveKit.config,
+    // Отправители push в тестах поддельные (FakePush); настройки нужны регистрации устройств и GET /push/config.
+    push =
+        PushSettings(
+            maxDevicesPerUser = 10,
+            webPushHosts = listOf("fcm.googleapis.com", ".push.services.mozilla.com", ".push.apple.com"),
+            webPush = TestWebPush.settings,
+            fcm = null,
+            ruStore = null,
+        ),
 )
 
-/** Окружение теста API: клиент к серверу в памяти, управляемые часы и поддельный Яндекс. */
+/** Ключи Web Push для тестов — новые при каждом запуске, в репозитории их нет. */
+object TestWebPush {
+    val settings: WebPushSettings by lazy {
+        val (publicKey, privateKey) = VapidKeys.generate()
+        WebPushSettings(publicKey, privateKey, subject = "mailto:test@ryadom.test")
+    }
+
+    /** Новая подписка браузера: ключи настоящие, адрес — push-сервиса Chrome. */
+    fun subscription(id: String = Uuid.random().toString()): RegisterDeviceRequest {
+        val (p256dh, _) = VapidKeys.generate()
+        return RegisterDeviceRequest(
+            provider = PushProvider.WEB_PUSH,
+            token = "https://fcm.googleapis.com/fcm/send/$id",
+            webPush = WebPushKeys(p256dh = p256dh, auth = Base64Url.encode(ByteArray(16) { it.toByte() })),
+        )
+    }
+}
+
+/** Окружение теста API: клиент к серверу в памяти, управляемые часы, поддельные Яндекс и push-сервисы. */
 class ApiTestScope(
     val client: HttpClient,
     val clock: TestClock,
     val yandex: FakeYandex,
+    private val fakePush: FakePush,
     private val components: AppComponents,
 ) {
+    /** Отправленные push-уведомления — после того, как рассылка закончилась. */
+    suspend fun pushes(): FakePush {
+        components.push.awaitIdle()
+        return fakePush
+    }
+
+    /** Регистрирует устройство для push-уведомлений; регистрация должна пройти. */
+    suspend fun registerDevice(
+        user: AuthResponse,
+        request: RegisterDeviceRequest = TestWebPush.subscription(),
+    ): Device {
+        val response = postJson(ApiPaths.DEVICES, request) { auth(user) }
+        assertEquals(HttpStatusCode.OK, response.status)
+        return response.body()
+    }
+
     private val connections = mutableListOf<RealtimeTestClient>()
 
     suspend fun postJson(
@@ -158,20 +211,21 @@ class ApiTestScope(
  */
 fun apiTest(
     config: AppConfig = testConfig(),
+    push: FakePush = FakePush(),
     block: suspend ApiTestScope.() -> Unit,
 ) = testApplication {
     TestDatabase.clean()
     val clock = TestClock()
     val yandex = FakeYandex()
     lateinit var components: AppComponents
-    application { components = module(config, clock, yandex.httpClient, runBackgroundJobs = false) }
+    application { components = module(config, clock, yandex.httpClient, runBackgroundJobs = false, pushSenders = push.senders) }
     startApplication()
     val client =
         createClient {
             install(ContentNegotiation) { json() }
             install(WebSockets)
         }
-    val scope = ApiTestScope(client, clock, yandex, components)
+    val scope = ApiTestScope(client, clock, yandex, push, components)
     try {
         scope.block()
     } finally {

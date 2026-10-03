@@ -1,5 +1,15 @@
 import { authJson, callJson, profileJson, requestJson } from '../testing/fakes'
-import { isActive, isCallActive, parseAuthResponse, parseHelpRequest, parseProfile, UnexpectedResponseError } from './types'
+import {
+  isActive,
+  isCallActive,
+  parseAuthResponse,
+  parseDeviceId,
+  parseHelpRequest,
+  parseIncomingRequests,
+  parseProfile,
+  parsePushConfig,
+  UnexpectedResponseError,
+} from './types'
 
 describe('parseProfile', () => {
   it('reads the fields the web app uses', () => {
@@ -69,5 +79,18 @@ describe('request status helpers', () => {
     expect(['ended', 'no_answer', 'cancelled'].some((s) => isActive(s as never))).toBe(false)
     expect(isCallActive('searching')).toBe(false)
     expect(isCallActive('in_call')).toBe(true)
+  })
+})
+
+describe('push models', () => {
+  it('reads the list of calls waiting for an answer', () => {
+    expect(parseIncomingRequests({ requests: [requestJson()], nextPage: null }).map((r) => r.id)).toEqual(['request-1'])
+    expect(() => parseIncomingRequests({ requests: null })).toThrow(UnexpectedResponseError)
+  })
+
+  it('reads the push config and the device id', () => {
+    expect(parsePushConfig({ webPushPublicKey: null, fcmSenderId: '1' })).toEqual({ webPushPublicKey: null })
+    expect(parsePushConfig({ webPushPublicKey: 'BKey' })).toEqual({ webPushPublicKey: 'BKey' })
+    expect(parseDeviceId({ id: 'device-1' })).toBe('device-1')
   })
 })

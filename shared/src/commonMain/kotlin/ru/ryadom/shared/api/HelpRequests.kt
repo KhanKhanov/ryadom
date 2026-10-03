@@ -59,6 +59,12 @@ data class HelpRequest(
     val call: CallCredentials?,
 )
 
+/** Ответ `GET /requests/incoming`: вызовы, которые ждут ответа волонтёра, от старых к новым. */
+@Serializable
+data class IncomingHelpRequests(
+    val requests: List<HelpRequest>,
+)
+
 /** Данные для подключения SDK LiveKit к комнате звонка. */
 @Serializable
 data class CallCredentials(

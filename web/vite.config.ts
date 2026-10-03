@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
+import { pwaFiles } from './vite.pwa.ts'
 
 /**
  * Сайт и API на одном адресе: запросы к /api/... Vite пересылает на backend (./gradlew :backend:run),
@@ -16,7 +17,8 @@ const apiProxy: Record<string, ProxyOptions> = {
 
 // Vite собирает веб-приложение, Vitest запускает тесты в эмуляции браузера (jsdom).
 export default defineConfig({
-  plugins: [react()],
+  // pwaFiles — Service Worker для push-уведомлений и манифесты веб-приложения (vite.pwa.ts).
+  plugins: [react(), pwaFiles()],
   server: { proxy: apiProxy },
   preview: { proxy: apiProxy },
   // LiveKit — один неделимый кусок около 520 КБ; он загружается только при звонке (src/call/deferredCall.ts).

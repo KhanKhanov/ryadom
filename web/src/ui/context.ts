@@ -7,6 +7,7 @@ import type { RealtimeHandlers } from '../api/realtime'
 import type { CallFactory } from '../call/call'
 import type { AppConfig } from '../config'
 import { strings, type Language, type Strings } from '../i18n'
+import type { PushService } from '../push/webPush'
 import type { Ringer } from './ringer'
 
 /** Всё, что экраны берут извне. В тестах подменяется поддельными реализациями (src/testing). */
@@ -17,6 +18,8 @@ export type AppServices = {
   connectRealtime(handlers: RealtimeHandlers): { stop(): void }
   createCall: CallFactory
   ringer: Ringer
+  /** Web Push: подписка браузера и уведомления о вызовах. */
+  push: PushService
   /** Хранилище этой вкладки (sessionStorage, а если браузер его запретил — в памяти) — для начатого входа через Яндекс. */
   tabStorage: Storage
   /** Переход на другой сайт (страница входа Яндекса). */

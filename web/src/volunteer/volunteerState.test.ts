@@ -182,4 +182,44 @@ describe('volunteerReducer', () => {
     const rated = reduce(...talking, { type: 'callEnded', request: request({ status: 'ended' }) }, { type: 'ratingDone' })
     expect(rated.finished).toBeNull()
   })
+
+  describe('calls waiting for an answer from the server', () => {
+    const synced = (...requests: HelpRequest[]): VolunteerAction => ({ type: 'incomingSynced', requests })
+
+    it('adds calls that came while there was no connection and rings', () => {
+      const state = reduce(synced(request(), request({ id: 'request-2' })))
+
+      expect(state.incoming.map((r) => r.id)).toEqual(['request-1', 'request-2'])
+      expect(state.notice?.key).toBe('incomingAnnouncement')
+    })
+
+    it('removes calls that closed meanwhile without a new announcement', () => {
+      const shown = reduce(event('request.incoming'), event('request.incoming', { id: 'request-2' }))
+
+      const state = volunteerReducer(shown, synced(request({ id: 'request-2' })))
+
+      expect(state.incoming.map((r) => r.id)).toEqual(['request-2'])
+      expect(state.notice).toEqual(shown.notice)
+    })
+
+    it('does not bring back a call skipped in this tab', () => {
+      const state = reduce(event('request.incoming'), { type: 'skip', requestId: 'request-1' }, synced(request()))
+
+      expect(state.incoming).toEqual([])
+      // И повторное событие о нём тоже не вернёт.
+      expect(volunteerReducer(state, event('request.incoming')).incoming).toEqual([])
+    })
+
+    it('keeps the call being accepted: the answer to Accept decides', () => {
+      const state = reduce(event('request.incoming'), { type: 'acceptStarted', requestId: 'request-1' }, synced())
+
+      expect(state.incoming.map((r) => r.id)).toEqual(['request-1'])
+    })
+
+    it('ignores the list during a call', () => {
+      const inCall = reduce(...talking)
+
+      expect(volunteerReducer(inCall, synced(request({ id: 'request-2' })))).toBe(inCall)
+    })
+  })
 })

@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Android 13+: без разрешения уведомление сервиса не видно в шторке (сам сервис работает).
+         Спрашивается вместе с камерой и микрофоном (BlindHelpRoute), волонтёру понадобится и для push. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Камера нужна, но приложение ставится и на устройства без задней камеры (возьмёт любую). -->
     <uses-feature

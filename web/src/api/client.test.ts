@@ -166,6 +166,32 @@ describe('ApiClient', () => {
     expect(backend.calls('POST', '/requests/request-1/rating')[0].body).toEqual({ helped: true })
   })
 
+  it('reads calls waiting for an answer', async () => {
+    const { api, backend } = await loggedIn()
+    backend.on('GET', '/requests/incoming', jsonResponse(200, { requests: [requestJson(), requestJson({ id: 'request-2' })] }))
+
+    expect((await api.getIncomingRequests()).map((r) => r.id)).toEqual(['request-1', 'request-2'])
+  })
+
+  it('registers and removes the Web Push subscription of this browser', async () => {
+    const { api, backend } = await loggedIn()
+    backend
+      .on('GET', '/push/config', jsonResponse(200, { webPushPublicKey: 'BKey' }))
+      .on('POST', '/devices', jsonResponse(200, { id: 'device-1' }))
+      .on('DELETE', '/devices/device-1', jsonResponse(204))
+
+    expect((await api.getPushConfig()).webPushPublicKey).toBe('BKey')
+    const id = await api.registerWebPush({ endpoint: 'https://fcm.googleapis.com/fcm/send/1', p256dh: 'BPub', auth: 'secret' })
+    await api.deleteDevice(id)
+
+    expect(backend.calls('POST', '/devices')[0].body).toEqual({
+      provider: 'webpush',
+      token: 'https://fcm.googleapis.com/fcm/send/1',
+      webPush: { p256dh: 'BPub', auth: 'secret' },
+    })
+    expect(backend.calls('DELETE', '/devices/device-1')).toHaveLength(1)
+  })
+
   it('logs out: forgets tokens and revokes the refresh token', async () => {
     const { api, backend, store, events } = await loggedIn()
     backend.on('POST', '/auth/logout', jsonResponse(204))

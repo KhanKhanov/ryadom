@@ -45,7 +45,7 @@ class MatchingFlowTest {
 
             assertEquals(request, firstEvents.nextOf<ServerEvent.RequestIncoming>().request)
             assertEquals(request, secondEvents.nextOf<ServerEvent.RequestIncoming>().request)
-            assertFalse(isNotified(request.id, offline), "без WebSocket вызов не доставить (push появится на этапе 5)")
+            assertFalse(isNotified(request.id, offline), "без WebSocket и устройства для push вызов не доставить")
             assertEquals(2, notifiedCount(request.id))
         }
 

@@ -22,4 +22,14 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  {
+    // Service Worker: свои глобальные объекты (self, clients), DOM нет.
+    files: ['src/push/serviceWorker.ts'],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
+    // Скрипты, которые запускает Node.js (например, scripts/generate-icons.mjs).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
 )

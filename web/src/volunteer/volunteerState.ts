@@ -4,6 +4,9 @@
 import type { RealtimeEvent } from '../api/realtime'
 import { isCallActive, type HelpRequest } from '../api/types'
 
+/** Сколько пропущенных вызовов помнить: дольше минуты вызов всё равно не ждёт. */
+const MAX_SKIPPED = 50
+
 /** Сообщение для экранного диктора и строки состояния. */
 export type NoticeKey =
   | 'incomingAnnouncement'
@@ -20,6 +23,8 @@ export type NoticeKey =
 export type VolunteerState = {
   /** Вызовы, которые можно принять, — в порядке поступления. */
   incoming: HelpRequest[]
+  /** Вызовы, пропущенные в этой вкладке: сервер о «Пропустить» не знает и вернёт их в списке ожидающих. */
+  skipped: string[]
   /** Какой вызов сейчас принимается (запрос отправлен, ответа ещё нет). */
   accepting: string | null
   /** Идущий звонок: запрос с данными для входа в комнату. */
@@ -36,6 +41,7 @@ export type VolunteerState = {
 
 export const initialVolunteerState: VolunteerState = {
   incoming: [],
+  skipped: [],
   accepting: null,
   call: null,
   remoteJoined: false,
@@ -49,6 +55,8 @@ export type VolunteerAction =
   | { type: 'event'; event: RealtimeEvent }
   /** Свежее состояние запроса из REST API (после переподключения). */
   | { type: 'requestUpdated'; request: HelpRequest }
+  /** Вызовы, которые ждут ответа, по данным сервера (GET /requests/incoming после подключения). */
+  | { type: 'incomingSynced'; requests: HelpRequest[] }
   /** Звонок, найденный через GET /requests/current после перезагрузки страницы. */
   | { type: 'callRestored'; request: HelpRequest }
   | { type: 'skip'; requestId: string }
@@ -72,10 +80,16 @@ export function volunteerReducer(state: VolunteerState, action: VolunteerAction)
       return onEvent(state, action.event)
     case 'requestUpdated':
       return onRequestUpdate(state, action.request, null)
+    case 'incomingSynced':
+      return onIncomingSynced(state, action.requests)
     case 'callRestored':
       return state.call?.id === action.request.id ? state : startCall(state, action.request)
     case 'skip':
-      return { ...state, incoming: without(state.incoming, action.requestId) }
+      return {
+        ...state,
+        incoming: without(state.incoming, action.requestId),
+        skipped: [...state.skipped, action.requestId].slice(-MAX_SKIPPED),
+      }
     case 'acceptStarted':
       return { ...state, accepting: action.requestId }
     case 'acceptSucceeded':
@@ -103,7 +117,7 @@ export function volunteerReducer(state: VolunteerState, action: VolunteerAction)
 function onEvent(state: VolunteerState, event: RealtimeEvent): VolunteerState {
   const { request } = event
   if (event.type === 'request.incoming') {
-    const known = state.incoming.some((r) => r.id === request.id) || state.call?.id === request.id
+    const known = state.incoming.some((r) => r.id === request.id) || state.call?.id === request.id || state.skipped.includes(request.id)
     if (known || request.status !== 'searching') return state
     return notify({ ...state, incoming: [...state.incoming, request] }, 'incomingAnnouncement')
   }
@@ -135,6 +149,22 @@ function onRequestUpdate(state: VolunteerState, request: HelpRequest, key: Notic
   const updated = { ...state, incoming: without(state.incoming, request.id) }
   // Пока волонтёр нажимает «Принять», сообщение об ошибке придёт в ответе сервера.
   return key && state.accepting !== request.id ? notify(updated, key) : updated
+}
+
+/**
+ * Список ожидающих вызовов с сервера заменяет показанный: вызовы, пришедшие без связи (или открытые
+ * из уведомления), появляются и звонят, закрытые без связи — исчезают. Пропущенные в этой вкладке не возвращаются.
+ */
+function onIncomingSynced(state: VolunteerState, requests: HelpRequest[]): VolunteerState {
+  // Во время звонка другие вызовы не принять, а к его концу они уже закроются.
+  if (state.call) return state
+  const waiting = requests.filter((r) => r.status === 'searching' && !state.skipped.includes(r.id))
+  // Вызов, который волонтёр как раз принимает, остаётся на экране: ответ на «Принять» решит его судьбу.
+  const accepting = state.incoming.find((r) => r.id === state.accepting && !waiting.some((w) => w.id === r.id))
+  const incoming = accepting ? [...waiting, accepting] : waiting
+  const isNew = incoming.some((r) => !state.incoming.some((shown) => shown.id === r.id))
+  const updated = { ...state, incoming }
+  return isNew ? notify(updated, 'incomingAnnouncement') : updated
 }
 
 function startCall(state: VolunteerState, request: HelpRequest): VolunteerState {

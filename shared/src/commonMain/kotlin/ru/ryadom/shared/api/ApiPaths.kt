@@ -18,6 +18,7 @@ object ApiPaths {
 
     const val REQUESTS = "/requests"
     const val REQUESTS_CURRENT = "/requests/current"
+    const val REQUESTS_INCOMING = "/requests/incoming"
 
     /** Имя параметра пути в [REQUEST], [REQUEST_ACCEPT] и [REQUEST_RATING]. */
     const val REQUEST_ID_PARAM = "requestId"
@@ -26,6 +27,17 @@ object ApiPaths {
     const val REQUEST = "/requests/{$REQUEST_ID_PARAM}"
     const val REQUEST_ACCEPT = "$REQUEST/accept"
     const val REQUEST_RATING = "$REQUEST/rating"
+
+    /** Устройства для push-уведомлений. */
+    const val DEVICES = "/devices"
+
+    /** Имя параметра пути в [DEVICE]. */
+    const val DEVICE_ID_PARAM = "deviceId"
+
+    /** Шаблон пути для сервера; клиенту удобнее [device]. */
+    const val DEVICE = "$DEVICES/{$DEVICE_ID_PARAM}"
+
+    const val PUSH_CONFIG = "/push/config"
 
     /** WebSocket событий в реальном времени (см. [ClientMessage] и [ServerEvent]). */
     const val REALTIME = "/ws"
@@ -40,4 +52,6 @@ object ApiPaths {
     fun requestAccept(requestId: String): String = "${request(requestId)}/accept"
 
     fun requestRating(requestId: String): String = "${request(requestId)}/rating"
+
+    fun device(deviceId: String): String = "$DEVICES/$deviceId"
 }

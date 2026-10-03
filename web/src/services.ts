@@ -5,6 +5,7 @@ import { RealtimeConnection } from './api/realtime'
 import { createLock, MemoryStorage, SessionStore } from './api/session'
 import { createDeferredLiveKitCall } from './call/deferredCall'
 import type { AppConfig } from './config'
+import { createBrowserPush } from './push/webPush'
 import type { AppServices } from './ui/context'
 import { createRinger } from './ui/ringer'
 
@@ -24,6 +25,7 @@ export function createBrowserServices(config: AppConfig): AppServices {
     },
     createCall: createDeferredLiveKitCall,
     ringer: createRinger(),
+    push: createBrowserPush(),
     tabStorage: storageOrMemory(() => window.sessionStorage),
     navigate: (url) => window.location.assign(url),
     now: () => new Date(),

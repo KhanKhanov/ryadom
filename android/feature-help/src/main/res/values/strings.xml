@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Экраны незрячего. Английский — values-en/strings.xml. -->
+<resources>
+    <string name="help_request">Позвать волонтёра</string>
+    <string name="help_searching">Ищем волонтёра…</string>
+    <string name="help_cancel">Отменить поиск</string>
+
+    <string name="help_no_answer">Сейчас никто не ответил. Попробуйте ещё раз.</string>
+    <string name="help_no_answer_night">Сейчас никто не ответил: ночью большинство волонтёров не принимают вызовы. Попробуйте ещё раз или утром.</string>
+    <string name="help_cancelled">Поиск отменён.</string>
+    <string name="help_volunteer_left_before_call">Волонтёр не смог подключиться. Позовите помощь ещё раз — найдём другого.</string>
+    <string name="help_call_ended">Звонок завершён.</string>
+
+    <string name="help_call_connecting">Волонтёр найден. Подключаемся…</string>
+    <string name="help_call_waiting">Ждём, пока волонтёр подключится…</string>
+    <string name="help_call_active">Волонтёр на связи. Наведите камеру на то, что нужно показать.</string>
+    <string name="help_call_active_no_camera">Волонтёр на связи.</string>
+    <string name="help_call_volunteer_left">Волонтёр отключился. Подождите немного или завершите звонок.</string>
+    <string name="help_call_reconnecting">Связь прервалась. Восстанавливаем…</string>
+    <string name="help_call_disconnected">Звонок прервался. Завершите звонок и позовите помощь ещё раз.</string>
+    <string name="help_camera_blocked">Нет доступа к камере: волонтёр вас не видит. Разрешите доступ в настройках.</string>
+    <string name="help_microphone_blocked">Нет доступа к микрофону: волонтёр вас не слышит. Разрешите доступ в настройках.</string>
+
+    <string name="help_rating_question">Звонок завершён. Удалось получить помощь?</string>
+    <string name="help_rating_yes">Да, помогли</string>
+    <string name="help_rating_no">Нет</string>
+    <string name="help_rating_skip">Пропустить</string>
+    <string name="help_rating_thanks">Спасибо за ответ!</string>
+
+    <string name="help_permissions_needed">Чтобы волонтёр видел и слышал вас, разрешите приложению доступ к камере и микрофону.</string>
+    <string name="help_open_settings">Открыть настройки</string>
+</resources>

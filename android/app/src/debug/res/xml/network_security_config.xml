@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Отладочная сборка ходит к backend и LiveKit на компьютере разработчика по http:// и ws:// (без TLS).
+  Адрес компьютера в локальной сети заранее неизвестен, поэтому разрешено для всех адресов.
+  В release-сборку этот файл не попадает: там только HTTPS.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

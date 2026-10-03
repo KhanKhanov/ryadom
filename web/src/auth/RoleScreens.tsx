@@ -56,6 +56,25 @@ export function BlindAccountScreen({ onProfileChange }: ProfileProps) {
   )
 }
 
+/**
+ * В кабинете волонтёра: смена роли на «незрячий». Без неё человек, ошибочно выбравший роль волонтёра,
+ * не смог бы попросить помощи — Android-приложение волонтёров пока не поддерживает (этап 6).
+ */
+export function SwitchToBlindPanel({ onProfileChange }: ProfileProps) {
+  const t = useStrings()
+  const { choose, busy, error } = useRoleChange(onProfileChange)
+  return (
+    <section className="panel" aria-labelledby="role-switch-title">
+      <h3 id="role-switch-title">{t.roleSwitchTitle}</h3>
+      <p>{t.roleSwitchText}</p>
+      {error && <ErrorMessage>{t[error]}</ErrorMessage>}
+      <Button busy={busy} onClick={() => void choose('blind')}>
+        {t.becomeBlind}
+      </Button>
+    </section>
+  )
+}
+
 /** Роль, для которой в веб-версии пока ничего нет (администратор, неизвестная роль). */
 export function InfoScreen({ title, text }: { title: StringKey; text: StringKey }) {
   const t = useStrings()
@@ -68,8 +87,8 @@ export function InfoScreen({ title, text }: { title: StringKey; text: StringKey 
 }
 
 /**
- * Смена роли. Вместе с ролью волонтёра сохраняется часовой пояс браузера: по нему сервер
- * считает время тишины, а пояс по умолчанию (Москва) подходит не всем.
+ * Смена роли. Вместе с ролью сохраняется часовой пояс браузера: по нему сервер считает
+ * время тишины волонтёра, а пояс по умолчанию (Москва) подходит не всем.
  */
 function useRoleChange(onProfileChange: (profile: UserProfile) => void) {
   const { api } = useServices()

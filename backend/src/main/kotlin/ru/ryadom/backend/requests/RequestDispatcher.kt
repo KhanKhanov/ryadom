@@ -2,6 +2,7 @@ package ru.ryadom.backend.requests
 
 import org.slf4j.LoggerFactory
 import ru.ryadom.backend.MatchingConfig
+import ru.ryadom.backend.RequestsConfig
 import ru.ryadom.backend.realtime.RealtimeHub
 import ru.ryadom.backend.users.UserRepository
 import ru.ryadom.shared.api.RequestStatus
@@ -13,7 +14,7 @@ import kotlin.uuid.Uuid
 
 /**
  * Поиск волонтёра: волны уведомлений, закрытие поиска без ответа (`no_answer`)
- * и страховочное закрытие звонков, о завершении которых LiveKit не сообщил.
+ * и страховочное закрытие звонков, в которые никто не вошёл или о завершении которых LiveKit не сообщил.
  *
  * Ход поиска хранится в базе (`help_requests.next_wave`), поэтому после перезапуска сервера
  * поиск продолжается с того места, где остановился. [tick] вызывается раз в `matching.checkInterval`;
@@ -26,7 +27,7 @@ class RequestDispatcher(
     private val hub: RealtimeHub,
     private val locks: RequestLocks,
     private val config: MatchingConfig,
-    private val maxCallDuration: Duration,
+    private val limits: RequestsConfig,
     private val clock: Clock,
 ) {
     /** Первая волна — сразу после создания запроса, не дожидаясь [tick]. */
@@ -36,6 +37,7 @@ class RequestDispatcher(
         for (request in requests.findSearching()) {
             locks.withLock(request.id) { advance(request.id) }
         }
+        closeUnjoinedCalls()
         closeStaleCalls()
     }
 
@@ -87,13 +89,31 @@ class RequestDispatcher(
         hub.send(requests.findWaitingVolunteers(closed.id) + closed.blindUserId, ServerEvent.RequestNoAnswer(closed.toApi()))
     }
 
+    /**
+     * Запрос приняли, но в комнату звонка так никто и не вошёл (приложения упали, пропала сеть).
+     * LiveKit не создаёт комнату без участников и о таком звонке не сообщит, а пока запрос активен,
+     * волонтёр не получает вызовов, а незрячий не может попросить помощи снова.
+     */
+    private suspend fun closeUnjoinedCalls() {
+        val now = clock.instant()
+        for (call in requests.findUnjoinedCallsAcceptedBefore(now.minus(limits.joinTimeout))) {
+            locks.withLock(call.id) {
+                val ended = requests.transition(call.id, from = setOf(RequestStatus.ACCEPTED), to = RequestStatus.ENDED, now)
+                if (ended != null) {
+                    log.warn("Request {}: closed, nobody joined the call within {}", ended.id, limits.joinTimeout)
+                    hub.sendCallEnded(ended)
+                }
+            }
+        }
+    }
+
     private suspend fun closeStaleCalls() {
         val now = clock.instant()
-        for (call in requests.findCallsAcceptedBefore(now.minus(maxCallDuration))) {
+        for (call in requests.findCallsAcceptedBefore(now.minus(limits.maxCallDuration))) {
             locks.withLock(call.id) {
                 val ended = requests.transition(call.id, from = CALL_STATUSES, to = RequestStatus.ENDED, now)
                 if (ended != null) {
-                    log.warn("Request {}: call closed after {} without room_finished from LiveKit", ended.id, maxCallDuration)
+                    log.warn("Request {}: call closed after {} without room_finished from LiveKit", ended.id, limits.maxCallDuration)
                     hub.sendCallEnded(ended)
                 }
             }

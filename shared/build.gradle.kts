@@ -1,5 +1,7 @@
-// Общая бизнес-логика для Android, iOS и backend (модели API, позже — клиент, WebSocket, состояния).
+// Общая бизнес-логика для Android, iOS и backend: модели API, клиент API и WebSocket, вход,
+// состояния запроса помощи и звонка.
 // Здесь запрещены зависимости от Android SDK и LiveKit: только чистый Kotlin (см. CLAUDE.md, правило 7).
+// Платформенное (хранение токенов, сам видеозвонок, движок HTTP) приходит снаружи через интерфейсы.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
@@ -38,9 +40,14 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.serialization.json)
+            api(libs.kotlinx.coroutines.core)
+            // Клиент HTTP и WebSocket без движка: движок (OkHttp на Android) передаёт платформа.
+            api(libs.ktor.client.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
     }
 }

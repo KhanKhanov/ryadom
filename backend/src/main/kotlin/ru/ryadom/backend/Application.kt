@@ -93,7 +93,7 @@ fun Application.module(
     val locks = RequestLocks()
     val matcher = VolunteerMatcher(config.profile)
     val dispatcher =
-        RequestDispatcher(helpRequests, users, matcher, hub, locks, config.matching, config.requests.maxCallDuration, clock)
+        RequestDispatcher(helpRequests, users, matcher, hub, locks, config.matching, config.requests, clock)
     val requests = HelpRequestService(helpRequests, users, dispatcher, hub, liveKit, locks, config.requests, clock)
 
     if (config.auth.devLoginEnabled) {

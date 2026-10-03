@@ -14,10 +14,10 @@
 ```
 backend/   Kotlin + Ktor, PostgreSQL (Flyway), LiveKit server SDK; Redis — когда серверов станет несколько
 shared/    Kotlin Multiplatform: API-клиент, WebSocket, авторизация, состояния запроса и звонка
-android/   Kotlin + Jetpack Compose, LiveKit Android SDK, minSdk 26
+android/   Kotlin + Jetpack Compose, LiveKit Android SDK, minSdk 26: app, feature-help, feature-call, core-ui, testing
 ios/       (этап 11) SwiftUI поверх shared, LiveKit Swift SDK
 web/       React + TypeScript (Vite): кабинет волонтёра и админка
-infra/     docker-compose.yml, конфиг LiveKit, Caddy, скрипты деплоя
+infra/     docker-compose.yml, конфиг LiveKit; Caddy и скрипты деплоя — этап 9
 docs/      ARCHITECTURE.md, api/openapi.yaml, чек-листы тестирования
 ```
 
@@ -27,7 +27,7 @@ docs/      ARCHITECTURE.md, api/openapi.yaml, чек-листы тестиров
 - Сначала меняем `openapi.yaml`, потом код сервера и клиентов. Модели API есть в двух местах: `shared` (Kotlin) и `web/src/api` (TypeScript) — обновляй оба.
 - Используй последние стабильные версии библиотек; версии Gradle — в version catalog (`libs.versions.toml`). Если последнюю версию взять нельзя (несовместимость, не скачивается), запиши причину рядом с версией или в отложенные задачи (`docs/ARCHITECTURE.md`, раздел 13).
 - Каждое изменение — с тестами.
-- Локальный запуск (подробно — README): `docker compose -f infra/docker-compose.yml up` поднимает PostgreSQL и LiveKit; backend — `./gradlew :backend:run`, web — `cd web && npm run dev` (запросы к `/api` Vite пересылает на backend). Тестам backend нужен запущенный Docker (Testcontainers).
+- Локальный запуск (подробно — README): `docker compose -f infra/docker-compose.yml up` поднимает PostgreSQL и LiveKit; backend — `./gradlew :backend:run`, web — `cd web && npm run dev` (запросы к `/api` Vite пересылает на backend), Android — эмулятор или телефон по USB после `adb reverse` портов 8080, 7880, 7881. Тестам backend нужен запущенный Docker (Testcontainers), UI-тестам Android — эмулятор.
 
 ## Завершение этапа
 
@@ -38,7 +38,7 @@ docs/      ARCHITECTURE.md, api/openapi.yaml, чек-листы тестиров
 
 ## Обязательные правила
 
-1. **Доступность Android.** У каждого интерактивного элемента — описание для TalkBack; зоны нажатия от 48 dp; изменения статуса объявляются голосом; никакой информации только цветом. Новый экран без проверок доступности не считается готовым. В web те же правила: статусы — через `useAnnounce()` (aria-live), кнопки — компонент `Button` (от 48 px, без потери фокуса), заголовок экрана — `ScreenHeading`.
+1. **Доступность Android.** У каждого интерактивного элемента — описание для TalkBack; зоны нажатия от 48 dp; изменения статуса объявляются голосом; никакой информации только цветом. Новый экран без проверок доступности не считается готовым: компоненты из `android/core-ui` (статусы — `LiveStatus`, ошибки — `ErrorMessage`, кнопки — `BigButton`/`SecondaryButton`, заголовок — `ScreenHeading`), в Robolectric-тесте — `assertScreenIsAccessible()`, на эмуляторе — экран в `ScreensAccessibilityTest` (ATF). В web те же правила: статусы — через `useAnnounce()` (aria-live), ошибки — `ErrorMessage`, кнопки — компонент `Button` (от 48 px, без потери фокуса), заголовок экрана — `ScreenHeading`. Автоматической проверки, как `assertScreenIsAccessible()`, в web нет: в тестах экран ищется по ролям и подписям (Testing Library), объявления проверяются через `announced()`.
 2. **Строки.** Весь пользовательский текст — через ресурсы, на русском и английском. Никаких строк в коде. В web ресурсы — `web/src/i18n.ts`.
 3. **Персональные данные.** Не собирать данные о здоровье и инвалидности, не записывать звонки, не хранить геолокацию. В логах — только id, без имён и токенов.
 4. **Секреты.** Никаких ключей, паролей и токенов в репозитории. Только переменные окружения и секреты CI. Есть `infra/.env.example`, секреты в нём пустые.
@@ -47,3 +47,4 @@ docs/      ARCHITECTURE.md, api/openapi.yaml, чек-листы тестиров
 7. **Готовность к iOS.** Бизнес-логика — только в `shared`, без зависимостей от Android и LiveKit. В Android-коде — только UI, видео и платформенные API. Push на сервере — через общий интерфейс отправителя.
 8. **Открытый код.** Комментарии и README понятны внешнему разработчику-волонтёру.
 9. **Совместимость API.** Старые версии приложения живут долго: APK обновляют вручную. Клиенты (`shared`, web) игнорируют неизвестные поля, события WebSocket и коды ошибок. Сервер не удаляет и не переименовывает поля, новые поля запросов делает необязательными, а новые значения перечислений в ответах добавляет, только когда клиенты умеют их пропускать. Подробно — `docs/ARCHITECTURE.md`, раздел 6.
+10. **Защита незрячих.** Волонтёр знает о незрячем только имя — без фамилии и контактов. Собеседника нельзя выбрать или позвать напрямую, видео передаёт только незрячий. Функции, которые это меняют (избранный волонтёр, чат, обмен контактами, повторный звонок тому же человеку), — только после обсуждения с владельцем. Подробно — `docs/ARCHITECTURE.md`, раздел 9, «Защита незрячих от мошенников и злоупотреблений».

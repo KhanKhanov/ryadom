@@ -11,6 +11,8 @@ async function openVolunteerPage(options: { profile?: Record<string, unknown>; n
     .on('GET', '/requests/current', options.current ?? jsonResponse(204))
   const rendered = renderApp(services)
   await screen.findByRole('heading', { name: 'Кабинет волонтёра' })
+  // Заголовок появляется чуть раньше, чем экран открывает соединение событий (эффект React).
+  await waitFor(() => expect(services.realtime.connections).toBeGreaterThan(0))
   return { services, ...rendered }
 }
 

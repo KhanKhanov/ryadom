@@ -127,17 +127,23 @@ export class FakeRealtime {
   }
 
   status(status: RealtimeStatus) {
-    this.handlers?.onStatus(status)
+    this.opened().onStatus(status)
   }
 
   /** Соединение готово (`ready`). */
   ready() {
-    this.handlers?.onStatus('connected')
-    this.handlers?.onReady()
+    this.opened().onStatus('connected')
+    this.opened().onReady()
   }
 
   emit(type: RealtimeEventType, request: RealtimeEvent['request']) {
-    this.handlers?.onEvent({ type, request })
+    this.opened().onEvent({ type, request })
+  }
+
+  /** Без открытого соединения событие ушло бы в пустоту, и тест упал бы позже и непонятно где. */
+  private opened(): RealtimeHandlers {
+    if (!this.handlers) throw new Error('FakeRealtime: the screen has not connected yet — wait until connections > 0')
+    return this.handlers
   }
 }
 

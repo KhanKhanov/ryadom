@@ -1,0 +1,18 @@
+{
+  // Проверка типов сквозного теста (e2e/, playwright.config.ts): его запускает Node.js, а не браузер.
+  // Запускается вместе с остальными: npm run typecheck.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}

@@ -18,6 +18,5 @@
     <string name="offline_title">No connection</string>
     <string name="offline_retry">Try again</string>
 
-    <string name="volunteer_not_yet">The volunteer app is coming later. For now, please help through the Ryadom website. If you need help yourself, tap “I need help”.</string>
-    <string name="role_unsupported">The app has no screens for your role yet. Please use the Ryadom website.</string>
+    <string name="role_unsupported">The app has no screens for your role. Please use the Ryadom website.</string>
 </resources>

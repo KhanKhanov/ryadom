@@ -3,8 +3,10 @@ package ru.ryadom.shared.client
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import ru.ryadom.shared.api.AuthResponse
 import ru.ryadom.shared.api.Device
@@ -312,6 +314,46 @@ class ApiClientTest {
             assertNull(storage.load())
             assertEquals(SessionEndReason.LOGGED_OUT, ended.await())
             assertEquals("""{"refreshToken":"refresh-0"}""", server.requestsTo("POST", "/auth/logout").single().body)
+        }
+
+    @Test
+    fun tasksBeforeLogoutRunWhileTheLoginStillWorks() =
+        runTest {
+            // Сервер отвечает на виртуальном времени теста. Иначе ответ идёт из другого потока, а ожидание
+            // задачи (5 секунд, тоже виртуальных) может истечь раньше — на медленной машине CI так и было.
+            val server = FakeServer(StandardTestDispatcher(testScheduler))
+            server.on("POST", "/auth/logout") { FakeResponse(204) }
+            server.on("DELETE", "/devices/device-1") { FakeResponse(204) }
+            val api = ApiClient("http://server:8080/", server.engine, signedInStorage(now), now = { now })
+            val log = mutableListOf<String>()
+            api.onBeforeLogout {
+                api.deleteDevice("device-1")
+                log += "device deleted"
+            }
+            // Ошибка одной задачи не останавливает ни другие задачи, ни выход.
+            api.onBeforeLogout { throw FakeNetworkFailure() }
+            val removed = api.onBeforeLogout { log += "removed task" }
+            removed()
+
+            api.logout()
+
+            assertEquals(listOf("device deleted"), log)
+            assertEquals("Bearer access-0", server.requestsTo("DELETE", "/devices/device-1").single().authorization)
+            assertEquals(1, server.requestsTo("POST", "/auth/logout").size)
+        }
+
+    @Test
+    fun hangingTaskDoesNotBlockLogout() =
+        runTest {
+            server.on("POST", "/auth/logout") { FakeResponse(204) }
+            val storage = signedInStorage(now)
+            val api = client(storage)
+            api.onBeforeLogout { awaitCancellation() }
+
+            api.logout()
+
+            assertNull(storage.load())
+            assertEquals(ApiClient.BEFORE_LOGOUT_TIMEOUT_MS, testScheduler.currentTime)
         }
 
     @Test

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Узнать, что сеть появилась, и сразу переподключиться к серверу событий. -->
@@ -14,7 +15,8 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Ryadom">
-        <!-- singleTop: нажатие на уведомление о звонке возвращает в тот же экран, а не открывает второй. -->
+        <!-- singleTop: нажатие на уведомление о звонке или вызове возвращает в тот же экран, а не открывает второй.
+             showWhenLocked и turnScreenOn включаются из кода, только пока звонит вызов или идёт звонок волонтёра. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,6 +26,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Push о вызовах волонтёру (FCM): RyadomMessagingService в push/FcmPush.kt. -->
+        <service
+            android:name=".push.RyadomMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Адрес устройства в FCM — Firebase Installation ID (onRegistered), а не устаревший токен. -->
+        <meta-data
+            android:name="firebase_messaging_installation_id_enabled"
+            android:value="true" />
+        <!-- FCM регистрируется, только когда вошёл волонтёр (FcmPush.register): телефон незрячего в нём не нужен. -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+        <!-- Firebase запускается из кода (FcmPush) по настройкам сборки, без google-services.json,
+             поэтому автоматический запуск при старте приложения не нужен. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
     </application>
 
 </manifest>

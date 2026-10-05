@@ -73,6 +73,21 @@ data class DoNotDisturb(
     val from: String,
     val to: String,
 ) {
+    /** Время тишины есть: если начало равно концу, окно пустое и вызовы приходят круглосуточно. */
+    val isSet: Boolean get() = from != to
+
+    /**
+     * Время [time] (`ЧЧ:ММ`) внутри окна — так же, как считает сервер (`VolunteerMatcher`) и сайт
+     * (`web/src/volunteer/quietHours.ts`): начало включительно, конец — нет, окно может переходить через полночь.
+     * Строки `ЧЧ:ММ` можно сравнивать как строки.
+     */
+    fun contains(time: String): Boolean =
+        when {
+            !isSet -> false
+            from < to -> time >= from && time < to
+            else -> time >= from || time < to
+        }
+
     companion object {
         val TIME_REGEX = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")
     }

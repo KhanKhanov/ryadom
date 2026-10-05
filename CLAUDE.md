@@ -14,31 +14,31 @@
 ```
 backend/   Kotlin + Ktor, PostgreSQL (Flyway), LiveKit server SDK; Redis — когда серверов станет несколько
 shared/    Kotlin Multiplatform: API-клиент, WebSocket, авторизация, состояния запроса и звонка
-android/   Kotlin + Jetpack Compose, LiveKit Android SDK, minSdk 26: app, feature-help, feature-call, core-ui, testing
+android/   Kotlin + Jetpack Compose, LiveKit Android SDK, minSdk 26: app, feature-help, feature-volunteer, feature-call, core-ui, testing
 ios/       (этап 11) SwiftUI поверх shared, LiveKit Swift SDK
-web/       React + TypeScript (Vite): кабинет волонтёра и админка
+web/       React + TypeScript (Vite): кабинет волонтёра и админка; e2e/ — сквозной тест звонка (Playwright)
 infra/     docker-compose.yml, конфиг LiveKit; Caddy и скрипты деплоя — этап 9
 docs/      ARCHITECTURE.md, api/openapi.yaml, чек-листы тестирования
 ```
 
 ## Порядок работы
 
-- Работаем по этапам из `docs/ARCHITECTURE.md`, раздел 13. Один этап — одна ветка и один PR.
+- Работаем по этапам из `docs/ARCHITECTURE.md`, раздел 13. Один этап — одна ветка и один PR. Этап начинается с блока «Перед этапом N» в отложенных задачах, если он есть: это то, что не удалось проверить на прошлом этапе.
 - Сначала меняем `openapi.yaml`, потом код сервера и клиентов. Модели API есть в двух местах: `shared` (Kotlin) и `web/src/api` (TypeScript) — обновляй оба.
 - Используй последние стабильные версии библиотек; версии Gradle — в version catalog (`libs.versions.toml`). Если последнюю версию взять нельзя (несовместимость, не скачивается), запиши причину рядом с версией или в отложенные задачи (`docs/ARCHITECTURE.md`, раздел 13).
 - Каждое изменение — с тестами.
-- Локальный запуск (подробно — README): `docker compose -f infra/docker-compose.yml up` поднимает PostgreSQL и LiveKit; backend — `./gradlew :backend:run`, web — `cd web && npm run dev` (запросы к `/api` Vite пересылает на backend), Android — эмулятор или телефон по USB после `adb reverse` портов 8080, 7880, 7881. Тестам backend нужен запущенный Docker (Testcontainers), UI-тестам Android — эмулятор.
+- Локальный запуск (подробно — README): `docker compose -f infra/docker-compose.yml up` поднимает PostgreSQL и LiveKit; backend — `./gradlew :backend:run`, web — `cd web && npm run dev` (запросы к `/api` Vite пересылает на backend), Android — эмулятор или телефон по USB после `adb reverse` портов 8080, 7880, 7881. Тестам backend нужен запущенный Docker (Testcontainers), UI-тестам Android — эмулятор, сквозному тесту (`npm run e2e`) — окружение и backend.
 
 ## Завершение этапа
 
 1. Все тесты и линтеры проходят, включая проверку `openapi.yaml` (команды — README, раздел «Тесты и линтеры»).
 2. Если решение поменялось — обновлены `docs/ARCHITECTURE.md`, `openapi.yaml`, README и этот файл.
-3. Задачи, отложенные на будущие этапы, записаны в `docs/ARCHITECTURE.md`, раздел 13, «Отложенные задачи»: следующий этап — новая сессия, отчёт из чата она не увидит. Выполненные оттуда удалены.
+3. Задачи, отложенные на будущие этапы, записаны в `docs/ARCHITECTURE.md`, раздел 13, «Отложенные задачи»: следующий этап — новая сессия, отчёт из чата она не увидит. Выполненные оттуда удалены. Что не удалось проверить — туда же: в блок «Перед этапом N+1» (с командами, как проверить) или в этап, до которого проверка обязательна, с причиной.
 4. В отчёте владельцу — что сделано, что не удалось проверить и чем результат отличается от плана.
 
 ## Обязательные правила
 
-1. **Доступность Android.** У каждого интерактивного элемента — описание для TalkBack; зоны нажатия от 48 dp; изменения статуса объявляются голосом; никакой информации только цветом. Новый экран без проверок доступности не считается готовым: компоненты из `android/core-ui` (статусы — `LiveStatus`, ошибки — `ErrorMessage`, кнопки — `BigButton`/`SecondaryButton`, заголовок — `ScreenHeading`), в Robolectric-тесте — `assertScreenIsAccessible()`, на эмуляторе — экран в `ScreensAccessibilityTest` (ATF). В web те же правила: статусы — через `useAnnounce()` (aria-live), ошибки — `ErrorMessage`, кнопки — компонент `Button` (от 48 px, без потери фокуса), заголовок экрана — `ScreenHeading`. Автоматической проверки, как `assertScreenIsAccessible()`, в web нет: в тестах экран ищется по ролям и подписям (Testing Library), объявления проверяются через `announced()`.
+1. **Доступность Android.** У каждого интерактивного элемента — описание для TalkBack; зоны нажатия от 48 dp; изменения статуса объявляются голосом; никакой информации только цветом. Новый экран без проверок доступности не считается готовым: компоненты из `android/core-ui` (статусы — `LiveStatus`, ошибки — `ErrorMessage`, кнопки — `BigButton`/`SecondaryButton`, переключатели — `SwitchRow`, заголовок — `ScreenHeading`), в Robolectric-тесте — `assertScreenIsAccessible()`, на эмуляторе — экран в `ScreensAccessibilityTest` (ATF). В web те же правила: статусы — через `useAnnounce()` (aria-live), ошибки — `ErrorMessage`, кнопки — компонент `Button` (от 48 px, без потери фокуса), заголовок экрана — `ScreenHeading`. Автоматической проверки, как `assertScreenIsAccessible()`, в web нет: в тестах экран ищется по ролям и подписям (Testing Library), объявления проверяются через `announced()`.
 2. **Строки.** Весь пользовательский текст — через ресурсы, на русском и английском. Никаких строк в коде. В web ресурсы — `web/src/i18n.ts`.
 3. **Персональные данные.** Не собирать данные о здоровье и инвалидности, не записывать звонки, не хранить геолокацию. В логах — только id, без имён и токенов.
 4. **Секреты.** Никаких ключей, паролей и токенов в репозитории. Только переменные окружения и секреты CI. Есть `infra/.env.example`, секреты в нём пустые.

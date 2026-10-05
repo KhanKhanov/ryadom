@@ -18,7 +18,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import ru.ryadom.android.testing.assertScreenIsAccessible
 import ru.ryadom.android.ui.theme.RyadomTheme
-import ru.ryadom.shared.api.Role
 import ru.ryadom.shared.api.SelectableRole
 import ru.ryadom.shared.client.SessionEndReason
 import ru.ryadom.shared.client.UserError
@@ -117,48 +116,14 @@ class AuthScreensTest {
         composeRule.assertScreenIsAccessible()
     }
 
-    private fun showUnsupportedRole(
-        role: Role,
-        error: UserError? = null,
-    ) {
-        composeRule.setContent {
-            RyadomTheme {
-                UnsupportedRoleScreen(
-                    role = role,
-                    error = error,
-                    busy = false,
-                    onNeedHelp = { events += "need-help" },
-                    onLogout = { events += "logout" },
-                )
-            }
-        }
-    }
-
     @Test
-    fun volunteerIsSentToWebsiteButCanAskForHelp() {
-        showUnsupportedRole(Role.VOLUNTEER)
+    fun adminIsSentToWebsite() {
+        composeRule.setContent { RyadomTheme { UnsupportedRoleScreen(busy = false, onLogout = { events += "logout" }) } }
 
-        composeRule.onNodeWithText("Приложение для волонтёров появится позже", substring = true).assertIsDisplayed()
-        // Незрячий, по ошибке выбравший «Я хочу помогать», не застревает на этом экране.
-        composeRule.onNodeWithText("Мне нужна помощь").performClick()
+        composeRule.onNodeWithText("Для вашей роли в приложении нет экранов. Пользуйтесь сайтом «Рядом».").assertIsDisplayed()
+        composeRule.onNodeWithText("Выйти").performClick()
 
-        assertEquals(listOf("need-help"), events)
-        composeRule.assertScreenIsAccessible()
-    }
-
-    @Test
-    fun roleChangeErrorIsShown() {
-        showUnsupportedRole(Role.VOLUNTEER, error = UserError.ACTIVE_REQUEST)
-
-        composeRule.onNodeWithText("Сначала завершите текущий запрос или звонок.").assertIsDisplayed()
-    }
-
-    @Test
-    fun adminCannotSwitchToAskingForHelp() {
-        showUnsupportedRole(Role.ADMIN)
-
-        composeRule.onNodeWithText("Для вашей роли в приложении пока нет экранов. Пользуйтесь сайтом «Рядом».").assertIsDisplayed()
-        composeRule.onNodeWithText("Мне нужна помощь").assertDoesNotExist()
+        assertEquals(listOf("logout"), events)
         composeRule.assertScreenIsAccessible()
     }
 

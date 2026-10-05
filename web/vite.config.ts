@@ -27,5 +27,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
+    // Сквозной тест (e2e/*.e2e.ts) запускает Playwright, а не Vitest.
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })

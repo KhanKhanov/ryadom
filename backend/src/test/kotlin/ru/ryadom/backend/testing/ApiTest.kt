@@ -208,6 +208,7 @@ class ApiTestScope(
  * @Test fun example() = apiTest { val auth = devLogin(); ... }
  * ```
  * Фоновая проверка поиска выключена: время двигает тест (`clock.advance`), проверку запускает `tick()`.
+ * Каждый ответ сервера проверяется по `docs/api/openapi.yaml` ([OpenApiContract]).
  */
 fun apiTest(
     config: AppConfig = testConfig(),
@@ -224,6 +225,8 @@ fun apiTest(
         createClient {
             install(ContentNegotiation) { json() }
             install(WebSockets)
+            // Каждый ответ сервера сверяется с docs/api/openapi.yaml.
+            install(OpenApiContract.plugin)
         }
     val scope = ApiTestScope(client, clock, yandex, push, components)
     try {

@@ -29,7 +29,16 @@ import kotlinx.coroutines.withTimeoutOrNull
 import ru.ryadom.shared.api.ClientMessage
 import ru.ryadom.shared.api.Realtime
 import ru.ryadom.shared.api.ServerEvent
+import kotlin.math.roundToLong
+import kotlin.random.Random
 import kotlin.time.Clock
+
+/**
+ * Пауза перед повторной попыткой, случайно короче на долю до [RealtimeConnection.RECONNECT_JITTER]:
+ * клиенты, потерявшие связь одновременно, не приходят снова в одну и ту же секунду.
+ */
+internal fun Long.shortenedRandomly(random: Random): Long =
+    this - (this * RealtimeConnection.RECONNECT_JITTER * random.nextDouble()).roundToLong()
 
 /** Что нужно соединению от клиента API: токены и завершение сеанса. Реализует [ApiClient]. */
 interface RealtimeAuth {
@@ -94,12 +103,15 @@ enum class RealtimeStatus { CONNECTING, CONNECTED, RECONNECTING }
  *
  * События, случившиеся без связи, сервер не повторяет. Поэтому после каждого [ServerEvent.Ready]
  * (в том числе после переподключения) клиент перечитывает состояние через REST API.
+ *
+ * @param random источник случайных пауз ([reconnectPause]); в тестах — предсказуемый.
  */
 class RealtimeConnection(
     private val url: String,
     private val auth: RealtimeAuth,
     private val transport: RealtimeTransport,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val random: Random = Random.Default,
 ) {
     private val eventFlow = MutableSharedFlow<ServerEvent>(extraBufferCapacity = 64)
 
@@ -174,7 +186,7 @@ class RealtimeConnection(
             // Если это повторяется до `ready`, дело не в токене — переподключаемся с паузами, как при обрыве.
             val unauthorized = closeCode == Realtime.CLOSE_UNAUTHORIZED
             if (unauthorized) forceRefresh = true
-            val pause = if (unauthorized && failures == 0) 0L else RECONNECT_DELAYS_MS[minOf(failures, RECONNECT_DELAYS_MS.lastIndex)]
+            val pause = if (unauthorized && failures == 0) 0L else reconnectPause(failures, random)
             failures++
             statusFlow.value = RealtimeStatus.RECONNECTING
             withTimeoutOrNull(pause) { wakeUp.receive() }
@@ -241,6 +253,19 @@ class RealtimeConnection(
     companion object {
         /** Паузы перед повторными попытками подключиться: чем дольше нет связи, тем реже попытки. */
         val RECONNECT_DELAYS_MS = listOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
+
+        /**
+         * На какую долю пауза может быть короче, чем в [RECONNECT_DELAYS_MS]. Когда сервер перезапускается
+         * (обновление), связь теряют все клиенты разом; одинаковые паузы привели бы их обратно в одну и ту же
+         * секунду. Пауза только сокращается: дольше, чем обещано, клиент без связи не ждёт.
+         */
+        const val RECONNECT_JITTER = 0.25
+
+        /** Пауза перед попыткой после [failures] неудач подряд: из [RECONNECT_DELAYS_MS], случайно короче на долю до [RECONNECT_JITTER]. */
+        fun reconnectPause(
+            failures: Int,
+            random: Random,
+        ): Long = RECONNECT_DELAYS_MS[failures.coerceIn(0, RECONNECT_DELAYS_MS.lastIndex)].shortenedRandomly(random)
 
         /**
          * Как часто клиент проверяет соединение (WebSocket ping). Без проверки оборванное соединение

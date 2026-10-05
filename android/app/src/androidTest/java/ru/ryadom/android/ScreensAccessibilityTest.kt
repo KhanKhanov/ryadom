@@ -33,8 +33,20 @@ import ru.ryadom.android.auth.UnsupportedRoleScreen
 import ru.ryadom.android.help.BlindHelpActions
 import ru.ryadom.android.help.BlindHelpScreen
 import ru.ryadom.android.ui.theme.RyadomTheme
+import ru.ryadom.android.volunteer.CallReadiness
+import ru.ryadom.android.volunteer.PushAvailability
+import ru.ryadom.android.volunteer.VolunteerActions
+import ru.ryadom.android.volunteer.VolunteerExtras
+import ru.ryadom.android.volunteer.VolunteerScreen
 import ru.ryadom.shared.api.CallCredentials
+import ru.ryadom.shared.api.DoNotDisturb
+import ru.ryadom.shared.api.Gender
+import ru.ryadom.shared.api.GenderPreference
+import ru.ryadom.shared.api.HelpRequest
+import ru.ryadom.shared.api.Language
+import ru.ryadom.shared.api.RequestStatus
 import ru.ryadom.shared.api.Role
+import ru.ryadom.shared.api.UserProfile
 import ru.ryadom.shared.call.CallConnection
 import ru.ryadom.shared.call.CallState
 import ru.ryadom.shared.call.CameraState
@@ -46,6 +58,11 @@ import ru.ryadom.shared.client.UserError
 import ru.ryadom.shared.help.BlindScreen
 import ru.ryadom.shared.help.BlindState
 import ru.ryadom.shared.help.HelpOutcome
+import ru.ryadom.shared.volunteer.FinishedCall
+import ru.ryadom.shared.volunteer.Notice
+import ru.ryadom.shared.volunteer.VolunteerCall
+import ru.ryadom.shared.volunteer.VolunteerNotice
+import ru.ryadom.shared.volunteer.VolunteerState
 
 /**
  * Accessibility Test Framework (docs/ARCHITECTURE.md, раздел 12): на эмуляторе проверяет то, что не
@@ -140,10 +157,7 @@ class ScreensAccessibilityTest {
     fun offline() = check { OfflineScreen(error = UserError.NETWORK, onRetry = {}, onLogout = {}) }
 
     @Test
-    fun volunteerNotYet() =
-        check {
-            UnsupportedRoleScreen(role = Role.VOLUNTEER, error = UserError.ACTIVE_REQUEST, busy = false, onNeedHelp = {}, onLogout = {})
-        }
+    fun unsupportedRole() = check { UnsupportedRoleScreen(busy = false, onLogout = {}) }
 
     @Test
     fun ready() = blind(BlindState(screen = BlindScreen.Ready(HelpOutcome.NO_ANSWER_AT_NIGHT)))
@@ -173,6 +187,113 @@ class ScreensAccessibilityTest {
 
     @Test
     fun rating() = blind(BlindState(screen = BlindScreen.Rating("id")))
+
+    // --- Волонтёр ---
+
+    private fun volunteer(
+        state: VolunteerState,
+        extras: VolunteerExtras = VolunteerExtras(volunteerProfile),
+    ) = check {
+        // Вместо камеры незрячего — тёмный прямоугольник, как изображение на экране звонка.
+        VolunteerScreen(state, extras, NoVolunteerActions, peerVideo = { Box(it.background(Color.DarkGray)) })
+    }
+
+    private val incoming =
+        HelpRequest("id", RequestStatus.SEARCHING, Language.RU, GenderPreference.ANY, "2026-10-05T10:00:00Z", null, null, null)
+
+    @Test
+    fun volunteerIncomingCall() =
+        volunteer(VolunteerState(incoming = listOf(incoming), notice = Notice(1, VolunteerNotice.INCOMING), synced = true))
+
+    @Test
+    fun volunteerAcceptingCall() = volunteer(VolunteerState(incoming = listOf(incoming), accepting = "id"))
+
+    @Test
+    fun volunteerHomeWithProblems() =
+        volunteer(
+            VolunteerState(connection = RealtimeStatus.RECONNECTING, error = UserError.NETWORK, busy = true),
+            VolunteerExtras(
+                volunteerProfile,
+                CallReadiness(microphoneGranted = false, notificationsGranted = false, push = PushAvailability.NO_GOOGLE_SERVICES),
+                quietNow = true,
+            ),
+        )
+
+    @Test
+    fun volunteerHomeAllSet() =
+        volunteer(
+            VolunteerState(notice = Notice(1, VolunteerNotice.READY_ON)),
+            VolunteerExtras(volunteerProfile, CallReadiness(fullScreenAllowed = false)),
+        )
+
+    @Test
+    fun volunteerCallWithVideo() =
+        volunteer(
+            VolunteerState(
+                call =
+                    VolunteerCall(
+                        "id",
+                        credentials,
+                        CallState(CallConnection.CONNECTED, PeerPresence.PRESENT, MicrophoneState.ON, peerVideo = true),
+                    ),
+            ),
+        )
+
+    @Test
+    fun volunteerCallWithoutVideoAndMicrophone() =
+        volunteer(
+            VolunteerState(
+                call = VolunteerCall("id", credentials, CallState(CallConnection.CONNECTED, PeerPresence.LEFT, MicrophoneState.BLOCKED)),
+            ),
+        )
+
+    @Test
+    fun volunteerCallEnding() = volunteer(VolunteerState(call = VolunteerCall("id", credentials, ending = true), error = UserError.NETWORK))
+
+    @Test
+    fun volunteerRating() = volunteer(VolunteerState(finished = FinishedCall("id", endedByPeer = true), incoming = listOf(incoming)))
+
+    private val volunteerProfile =
+        UserProfile(
+            id = "user",
+            role = Role.VOLUNTEER,
+            displayName = "Анна",
+            languages = listOf(Language.RU),
+            gender = Gender.UNSPECIFIED,
+            genderPreference = GenderPreference.ANY,
+            timezone = "Europe/Moscow",
+            doNotDisturb = DoNotDisturb("22:00", "08:00"),
+            notificationsEnabled = true,
+            createdAt = "2026-09-30T10:00:00Z",
+        )
+
+    private object NoVolunteerActions : VolunteerActions {
+        override fun accept(requestId: String) = Unit
+
+        override fun skip(requestId: String) = Unit
+
+        override fun setReady(ready: Boolean) = Unit
+
+        override fun endCall() = Unit
+
+        override fun setMicrophoneEnabled(enabled: Boolean) = Unit
+
+        override fun rate(helped: Boolean) = Unit
+
+        override fun skipRating() = Unit
+
+        override fun allowMicrophone() = Unit
+
+        override fun allowNotifications() = Unit
+
+        override fun allowFullScreen() = Unit
+
+        override fun openSettings() = Unit
+
+        override fun needHelp() = Unit
+
+        override fun logout() = Unit
+    }
 
     private object NoActions : BlindHelpActions {
         override fun requestHelp() = Unit

@@ -995,7 +995,9 @@ components:
           minLength: 1
           maxLength: 4096
           description: |
-            Токен устройства от FCM или RuStore. Для `webpush` — адрес подписки (`PushSubscription.endpoint`):
+            Адрес устройства в push-сервисе. Для `fcm` — Firebase Installation ID (FID) из
+            `FirebaseMessagingService.onRegistered`, а не устаревший токен регистрации FCM. Для `rustore` —
+            push-токен RuStore. Для `webpush` — адрес подписки (`PushSubscription.endpoint`):
             только `https://` и только адреса push-сервисов браузеров, известных серверу.
         webPush:
           $ref: '#/components/schemas/WebPushKeys'

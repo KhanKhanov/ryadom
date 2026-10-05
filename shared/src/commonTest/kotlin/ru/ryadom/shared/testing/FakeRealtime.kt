@@ -7,6 +7,7 @@ import ru.ryadom.shared.api.Realtime
 import ru.ryadom.shared.api.ServerEvent
 import ru.ryadom.shared.client.RealtimeSocket
 import ru.ryadom.shared.client.RealtimeTransport
+import kotlin.random.Random
 
 /** Поддельное WebSocket-соединение: тест присылает сообщения «от сервера» и смотрит, что отправил клиент. */
 class FakeSocket : RealtimeSocket {
@@ -58,4 +59,14 @@ class FakeTransport : RealtimeTransport {
         if (failConnect) throw FakeNetworkFailure()
         return FakeSocket().also { sockets += it }
     }
+}
+
+/** «Случайные» числа, всегда наименьшие: пауза переподключения ровно как в `RECONNECT_DELAYS_MS`, без разброса. */
+object NoJitter : Random() {
+    override fun nextBits(bitCount: Int): Int = 0
+}
+
+/** «Случайные» числа, всегда наибольшие: пауза переподключения сокращена на весь допустимый разброс. */
+object MaxJitter : Random() {
+    override fun nextBits(bitCount: Int): Int = -1 ushr (32 - bitCount)
 }

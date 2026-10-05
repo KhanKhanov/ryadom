@@ -6,6 +6,7 @@
     <string name="call_microphone_on">Unmute microphone</string>
     <string name="call_microphone_blocked">No access to the microphone</string>
     <string name="call_microphone_muted">Your microphone is muted.</string>
+    <string name="call_peer_video">Video from the other person’s camera</string>
 
     <string name="call_notification_channel">Call</string>
     <string name="call_notification_searching">Looking for a volunteer</string>

@@ -78,7 +78,10 @@ class AuthController(
         if (api.hasSession()) loadProfile() else current = AuthState(AuthScreen.Login())
     }
 
-    /** «Повторить» на экране [AuthScreen.Offline]. */
+    /**
+     * «Повторить» на экране [AuthScreen.Offline]. Платформа вызывает его и сама, когда появилась сеть:
+     * незрячему не нужно искать кнопку. На других экранах ничего не делает.
+     */
     fun retry() {
         if (current.screen == AuthScreen.Offline && !current.busy) loadProfile()
     }
@@ -91,7 +94,18 @@ class AuthController(
 
     fun chooseRole(role: SelectableRole) {
         if (current.screen !is AuthScreen.ChooseRole) return
-        run { show(api.updateMe(UpdateProfileRequest(role = role, timezone = timeZoneId()))) }
+        run {
+            val profile =
+                try {
+                    api.updateMe(UpdateProfileRequest(role = role, timezone = timeZoneId()))
+                } catch (e: ApiClientException.Server) {
+                    // Сервер не знает пояс, который сообщил телефон, — сохраняем роль без него, как на сайте.
+                    // Пояс останется прежним (по умолчанию — из конфига сервера).
+                    if (e.code != ApiErrorCodes.INVALID_REQUEST) throw e
+                    api.updateMe(UpdateProfileRequest(role = role))
+                }
+            show(profile)
+        }
     }
 
     /**
@@ -103,6 +117,16 @@ class AuthController(
         val screen = current.screen as? AuthScreen.SignedIn ?: return
         if (screen.profile.role?.name == role.name) return
         run { show(api.updateMe(UpdateProfileRequest(role = role))) }
+    }
+
+    /**
+     * Профиль изменили не здесь — например, волонтёр включил или выключил вызовы ([ru.ryadom.shared.volunteer.VolunteerController]).
+     * Показать новый; если сменилась роль — экраны другой роли.
+     */
+    fun profileChanged(profile: UserProfile) {
+        val screen = current.screen as? AuthScreen.SignedIn ?: return
+        if (screen.profile.id != profile.id) return
+        current = current.copy(screen = screenFor(profile))
     }
 
     fun logout() {

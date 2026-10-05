@@ -1,9 +1,14 @@
 package ru.ryadom.android.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasText
@@ -11,6 +16,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,5 +89,24 @@ class ComponentsTest {
         }
 
         assertEquals(UserError.entries.size, texts.toSet().size)
+    }
+
+    @Test
+    fun switchRowIsOneAccessibleSwitch() {
+        var checked by mutableStateOf(false)
+        composeRule.setContent { SwitchRow("Готов помогать", checked, onCheckedChange = { checked = it }) }
+
+        composeRule
+            .onNode(hasText("Готов помогать"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
+            .performClick()
+
+        assertTrue(checked)
+        composeRule
+            .onNode(
+                hasText("Готов помогать"),
+            ).assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
+        composeRule.assertScreenIsAccessible()
     }
 }

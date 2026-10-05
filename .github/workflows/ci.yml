@@ -40,10 +40,10 @@ jobs:
       - run: >-
           ./gradlew
           :android:app:ktlintCheck :android:core-ui:ktlintCheck :android:feature-call:ktlintCheck
-          :android:feature-help:ktlintCheck :android:testing:ktlintCheck
+          :android:feature-help:ktlintCheck :android:feature-volunteer:ktlintCheck :android:testing:ktlintCheck
           :android:app:lintDebug
           :android:app:testDebugUnitTest :android:core-ui:testDebugUnitTest :android:feature-call:testDebugUnitTest
-          :android:feature-help:testDebugUnitTest :android:testing:testDebugUnitTest
+          :android:feature-help:testDebugUnitTest :android:feature-volunteer:testDebugUnitTest :android:testing:testDebugUnitTest
 
   android-emulator:
     name: Android на эмуляторе (Accessibility Test Framework)
@@ -115,3 +115,50 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+
+  e2e:
+    name: Сквозной звонок в браузере (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # Секреты только для этого прогона: случайные, нигде не сохраняются.
+      - name: Окружение (infra/.env)
+        run: |
+          cp infra/.env.example infra/.env
+          sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" infra/.env
+          sed -i "s/^LIVEKIT_API_KEY=$/LIVEKIT_API_KEY=e2e$(openssl rand -hex 4)/" infra/.env
+          sed -i "s/^LIVEKIT_API_SECRET=$/LIVEKIT_API_SECRET=$(openssl rand -hex 32)/" infra/.env
+          sed -i "s/^JWT_SECRET=$/JWT_SECRET=$(openssl rand -hex 32)/" infra/.env
+      - run: docker compose -f infra/docker-compose.yml up -d --wait
+      # Backend берёт настройки из того же infra/.env (README, «Локальный запуск»).
+      - run: ./gradlew :backend:classes
+      - name: Backend
+        run: |
+          nohup ./gradlew --console=plain :backend:run > backend.log 2>&1 &
+          curl --silent --fail --retry 60 --retry-delay 2 --retry-all-errors http://localhost:8080/health
+      - run: npm ci
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      # Сайт тест собирает сам (VITE_DEV_TOOLS=true: вход без OAuth и «тестовый незрячий»), web/playwright.config.ts.
+      - run: npm run e2e
+        working-directory: web
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: |
+            web/playwright-report
+            web/test-results
+            backend.log
+          retention-days: 7

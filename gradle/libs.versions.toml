@@ -23,6 +23,8 @@ postgresql = "42.7.13"
 hikaricp = "7.1.0"
 typesafe-config = "1.4.9"
 testcontainers = "2.0.5"
+# Проверка ответов сервера по docs/api/openapi.yaml в тестах backend (JSON Schema 2020-12 — диалект OpenAPI 3.1).
+json-schema-validator = "3.0.8"
 # Backend: токены и webhook LiveKit (официальный серверный SDK)
 livekit-server = "0.16.0"
 
@@ -34,6 +36,10 @@ lifecycle = "2.11.0"
 livekit-android = "2.29.0"
 # Вход через Яндекс ID на Android (Яндекс LoginSDK).
 yandex-authsdk = "3.3.0"
+# Push-уведомления о вызовах для волонтёра (FCM). Только firebase-messaging, без Google Analytics.
+firebase-bom = "34.19.0"
+# Проверка, есть ли на телефоне сервисы Google (без них FCM не работает).
+play-services-base = "18.11.0"
 
 junit4 = "4.13.2"
 robolectric = "4.17"
@@ -81,11 +87,13 @@ flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 livekit-server = { module = "io.livekit:livekit-server", version.ref = "livekit-server" }
 
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 androidx-compose-ui = { module = "androidx.compose.ui:ui" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
@@ -97,6 +105,9 @@ androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-mani
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 livekit-android = { module = "io.livekit:livekit-android", version.ref = "livekit-android" }
 yandex-authsdk = { module = "com.yandex.android:authsdk", version.ref = "yandex-authsdk" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+play-services-base = { module = "com.google.android.gms:play-services-base", version.ref = "play-services-base" }
 
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }

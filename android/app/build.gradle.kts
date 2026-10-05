@@ -34,6 +34,15 @@ val apiUrl = buildSetting("ryadom.apiUrl", "http://localhost:8080")
 // поэтому тоже настройка. Пусто — кнопки «Войти через Яндекс ID» нет.
 val yandexClientId = buildSetting("ryadom.yandexClientId", "")
 
+// Firebase Cloud Messaging — push о вызовах волонтёру (docs/ARCHITECTURE.md, раздел 7). Значения — из консоли
+// Firebase: «Настройки проекта → Общие → Ваши приложения» (приложение Android с пакетом ru.ryadom).
+// Файл google-services.json в репозиторий не кладём: настройки — как ryadom.yandexClientId, в local.properties.
+// Пусто — push в этой сборке нет: вызовы приходят, только пока приложение открыто, и кабинет об этом говорит.
+val firebaseAppId = buildSetting("ryadom.firebase.appId", "")
+val firebaseApiKey = buildSetting("ryadom.firebase.apiKey", "")
+val firebaseProjectId = buildSetting("ryadom.firebase.projectId", "")
+val firebaseSenderId = buildSetting("ryadom.firebase.senderId", "")
+
 android {
     namespace = "ru.ryadom.android"
     compileSdk =
@@ -56,6 +65,10 @@ android {
 
         buildConfigField("String", "API_URL", "\"$apiUrl\"")
         buildConfigField("String", "YANDEX_CLIENT_ID", "\"$yandexClientId\"")
+        buildConfigField("String", "FIREBASE_APP_ID", "\"$firebaseAppId\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"$firebaseApiKey\"")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$firebaseProjectId\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID", "\"$firebaseSenderId\"")
         // Яндекс LoginSDK берёт client_id из манифеста.
         manifestPlaceholders["YANDEX_CLIENT_ID"] = yandexClientId
 
@@ -105,6 +118,7 @@ dependencies {
     implementation(project(":android:core-ui"))
     implementation(project(":android:feature-call"))
     implementation(project(":android:feature-help"))
+    implementation(project(":android:feature-volunteer"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -117,6 +131,12 @@ dependencies {
     // Движок HTTP и WebSocket для клиента API из shared.
     implementation(libs.ktor.client.okhttp)
     implementation(libs.yandex.authsdk)
+    // Push о вызовах волонтёру: только FCM, без Google Analytics и других библиотек Firebase.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    // Есть ли на телефоне сервисы Google (GoogleApiAvailability): без них FCM не работает.
+    implementation(libs.play.services.base)
+    implementation(libs.androidx.lifecycle.process)
 
     testImplementation(project(":android:testing"))
     testImplementation(libs.junit4)

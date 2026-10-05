@@ -6,6 +6,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import ru.ryadom.shared.api.AuthResponse
 import ru.ryadom.shared.api.Device
@@ -318,9 +319,12 @@ class ApiClientTest {
     @Test
     fun tasksBeforeLogoutRunWhileTheLoginStillWorks() =
         runTest {
+            // Сервер отвечает на виртуальном времени теста. Иначе ответ идёт из другого потока, а ожидание
+            // задачи (5 секунд, тоже виртуальных) может истечь раньше — на медленной машине CI так и было.
+            val server = FakeServer(StandardTestDispatcher(testScheduler))
             server.on("POST", "/auth/logout") { FakeResponse(204) }
             server.on("DELETE", "/devices/device-1") { FakeResponse(204) }
-            val api = client()
+            val api = ApiClient("http://server:8080/", server.engine, signedInStorage(now), now = { now })
             val log = mutableListOf<String>()
             api.onBeforeLogout {
                 api.deleteDevice("device-1")

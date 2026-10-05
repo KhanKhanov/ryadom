@@ -49,6 +49,11 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
+        // Виртуальное время в тестах (currentTime, runCurrent, advanceTimeBy) помечено как экспериментальное:
+        // без этого — сотни одинаковых предупреждений в логе сборки.
+        matching { it.name.endsWith("Test") }.configureEach {
+            languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+        }
     }
 }
 

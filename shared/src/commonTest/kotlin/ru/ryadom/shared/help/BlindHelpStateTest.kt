@@ -125,8 +125,9 @@ class BlindHelpStateTest {
         val joined = call.withCallState(REQUEST_ID, CallState(connection = CallConnection.CONNECTED, peer = PeerPresence.PRESENT))
         val left = joined.withCallState(REQUEST_ID, CallState(connection = CallConnection.CONNECTED, peer = PeerPresence.LEFT))
 
-        assertTrue((left.screen as BlindScreen.Call).volunteerJoined)
-        assertEquals(PeerPresence.LEFT, (left.screen as BlindScreen.Call).call.peer)
+        val screen = left.screen as BlindScreen.Call
+        assertTrue(screen.volunteerJoined)
+        assertEquals(PeerPresence.LEFT, screen.call.peer)
     }
 
     @Test

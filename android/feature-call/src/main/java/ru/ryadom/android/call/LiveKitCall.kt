@@ -7,6 +7,7 @@ import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
 import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
+import io.livekit.android.room.participant.RemoteParticipant
 import io.livekit.android.room.track.CameraPosition
 import io.livekit.android.room.track.LocalVideoTrackOptions
 import io.livekit.android.room.track.Track
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import livekit.org.webrtc.RendererCommon
 import ru.ryadom.shared.api.CallCredentials
 import ru.ryadom.shared.call.CallConnection
 import ru.ryadom.shared.call.CallFactory
@@ -37,7 +39,8 @@ import ru.ryadom.shared.call.PeerPresence
  * называется по id запроса; в ней двое: незрячий (задняя камера и микрофон) и волонтёр (только микрофон —
  * так разрешает его токен). Звук собеседника по умолчанию идёт в громкую связь: телефон держат перед собой.
  *
- * [current] — идущий звонок, чтобы экран мог показать изображение с камеры.
+ * [current] — идущий звонок, чтобы экран мог показать изображение: незрячему — своей камеры,
+ * волонтёру — камеры собеседника.
  *
  * @param debugLogging писать в logcat подробности подключения LiveKit — для отладочной сборки.
  */
@@ -88,6 +91,10 @@ class LiveKitCallSession internal constructor(
     /** Элементы экрана, где показывается своя камера. */
     private val renderers = mutableSetOf<TextureViewRenderer>()
     private var localVideo: VideoTrack? = null
+
+    /** Элементы экрана, где показывается камера собеседника (у волонтёра). */
+    private val peerRenderers = mutableSetOf<TextureViewRenderer>()
+    private var peerVideo: VideoTrack? = null
     private var closing = false
     private var released = false
 
@@ -104,8 +111,11 @@ class LiveKitCallSession internal constructor(
                 return@launch
             }
             update(state.copy(connection = CallConnection.CONNECTED))
-            // Собеседник мог войти в комнату раньше нас.
+            // Собеседник мог войти в комнату раньше нас — и уже показывать видео.
             updatePeer()
+            room.remoteParticipants.values
+                .firstNotNullOfOrNull { participant -> participant.videoTrackPublications.firstOrNull { it.second is VideoTrack } }
+                ?.let { (publication, track) -> showPeerVideo(track as VideoTrack, publication.muted) }
             enableMicrophone(true)
             if (options.publishCamera) enableCamera()
         }
@@ -149,8 +159,28 @@ class LiveKitCallSession internal constructor(
         releaseIfUnused()
     }
 
+    /**
+     * Показывать камеру собеседника в [renderer] (у волонтёра). Кадр вписывается целиком, без обрезки:
+     * волонтёру нужно видеть весь документ или упаковку, а не середину.
+     */
+    fun attachPeerRenderer(renderer: TextureViewRenderer) {
+        if (closing) return
+        room.initVideoRenderer(renderer)
+        renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+        peerRenderers += renderer
+        peerVideo?.addRenderer(renderer)
+    }
+
+    /** Элемент экрана с камерой собеседника убран. */
+    fun detachPeerRenderer(renderer: TextureViewRenderer) {
+        if (!peerRenderers.remove(renderer)) return
+        peerVideo?.removeRenderer(renderer)
+        renderer.release()
+        releaseIfUnused()
+    }
+
     private fun releaseIfUnused() {
-        if (closing && renderers.isEmpty() && !released) {
+        if (closing && renderers.isEmpty() && peerRenderers.isEmpty() && !released) {
             released = true
             room.release()
         }
@@ -158,12 +188,68 @@ class LiveKitCallSession internal constructor(
 
     private fun onEvent(event: RoomEvent) {
         when (event) {
-            is RoomEvent.Reconnecting -> update(state.copy(connection = CallConnection.RECONNECTING))
-            is RoomEvent.Reconnected -> update(state.copy(connection = CallConnection.CONNECTED))
-            is RoomEvent.Disconnected -> if (!closing) update(state.copy(connection = CallConnection.DISCONNECTED))
-            is RoomEvent.ParticipantConnected, is RoomEvent.ParticipantDisconnected -> updatePeer()
-            else -> Unit
+            is RoomEvent.Reconnecting -> {
+                update(state.copy(connection = CallConnection.RECONNECTING))
+            }
+
+            is RoomEvent.Reconnected -> {
+                update(state.copy(connection = CallConnection.CONNECTED))
+            }
+
+            is RoomEvent.Disconnected -> {
+                if (!closing) update(state.copy(connection = CallConnection.DISCONNECTED))
+            }
+
+            is RoomEvent.ParticipantConnected, is RoomEvent.ParticipantDisconnected -> {
+                updatePeer()
+            }
+
+            is RoomEvent.TrackSubscribed -> {
+                (event.track as? VideoTrack)?.let { showPeerVideo(it, event.publication.muted) }
+            }
+
+            is RoomEvent.TrackUnsubscribed -> {
+                if (event.track === peerVideo) showPeerVideo(null, muted = false)
+            }
+
+            // Собеседник выключил или включил камеру, не уходя из звонка («Скрыть видео», этап 7).
+            is RoomEvent.TrackMuted -> {
+                if (event.participant is RemoteParticipant &&
+                    event.publication.track === peerVideo
+                ) {
+                    updatePeerVideo(muted = true)
+                }
+            }
+
+            is RoomEvent.TrackUnmuted -> {
+                if (event.participant is RemoteParticipant &&
+                    event.publication.track === peerVideo
+                ) {
+                    updatePeerVideo(muted = false)
+                }
+            }
+
+            else -> {
+                Unit
+            }
         }
+    }
+
+    /** Видео собеседника появилось ([track]) или пропало (`null`). */
+    private fun showPeerVideo(
+        track: VideoTrack?,
+        muted: Boolean,
+    ) {
+        if (track !== peerVideo) {
+            peerRenderers.forEach { peerVideo?.removeRenderer(it) }
+            peerVideo = track
+            peerRenderers.forEach { track?.addRenderer(it) }
+        }
+        updatePeerVideo(muted)
+    }
+
+    private fun updatePeerVideo(muted: Boolean) {
+        if (!closing) update(state.copy(peerVideo = peerVideo != null && !muted))
     }
 
     /** Собеседник — единственный другой участник комнаты. Ушёл, если раньше был, а теперь его нет. */

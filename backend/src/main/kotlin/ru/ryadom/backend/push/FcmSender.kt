@@ -93,8 +93,9 @@ class FcmSettings(
  * Firebase Cloud Messaging, HTTP v1 API (https://firebase.google.com/docs/cloud-messaging/send/v1-api).
  * Уведомление — только данные (`data`), без готового текста: показывает его само приложение (этап 6).
  * Приоритет высокий — так Android доставит вызов сразу, даже телефону в режиме экономии энергии.
- * Поле `message.token` в документации FCM с 2026 года помечено устаревшим в пользу `fid`
- * (Firebase Installation ID), но в переходный период принимает и его — что передаёт приложение, решается на этапе 6.
+ * Адресат — `message.fid`: приложение регистрирует в FCM и присылает серверу Firebase Installation ID
+ * (`FirebaseMessagingService.onRegistered`), а не устаревший с 2026 года токен регистрации (`message.token`;
+ * решено на этапе 6). В `DeviceRecord.token` у FCM поэтому хранится FID.
  *
  * Токен доступа Google получается по подписанному ключом сервисного аккаунта JWT
  * (https://developers.google.com/identity/protocols/oauth2/service-account#httprest) и живёт час.
@@ -118,7 +119,7 @@ class FcmSender(
                 put(
                     "message",
                     buildJsonObject {
-                        put("token", device.token)
+                        put("fid", device.token)
                         put("data", JsonObject(message.toData().mapValues { JsonPrimitive(it.value) }))
                         put(
                             "android",
@@ -152,7 +153,8 @@ class FcmSender(
     ): PushResult {
         if (response.status.value in 200..299) return PushResult.SENT
         val error = fcmErrorCode(response.bodyAsText())
-        // Токен больше не действует: приложение удалено или токен выдан другому проекту Firebase.
+        // Устройство больше не зарегистрировано: приложение удалено, пользователь вышел (приложение удаляет FID)
+        // или FID выдан другому проекту Firebase.
         if (error in GONE_ERRORS) return PushResult.DEVICE_GONE
         log.warn("FCM to device {} failed: HTTP {} {}", device.id, response.status.value, error)
         return PushResult.FAILED

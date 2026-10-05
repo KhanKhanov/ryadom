@@ -12,11 +12,14 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.content.TextContent
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -91,6 +94,9 @@ class ApiClient(
     /** Сеанс закончился — нужно показать вход. */
     val sessionEnds: SharedFlow<SessionEndReason> = sessionEndEvents.asSharedFlow()
 
+    /** Задачи перед выходом ([onBeforeLogout]). */
+    private val beforeLogout = mutableListOf<suspend () -> Unit>()
+
     /** Есть ли сохранённый вход (токены могли истечь — это выяснится при первом запросе). */
     fun hasSession(): Boolean = storage.load() != null
 
@@ -107,9 +113,13 @@ class ApiClient(
             encode(OAuthLoginRequest.serializer(), OAuthLoginRequest(accessToken = yandexAccessToken)),
         )
 
-    /** Выход на этом устройстве: токены удаляются сразу, сервер отзывает refresh-токен. */
+    /**
+     * Выход на этом устройстве: сначала задачи [onBeforeLogout], пока вход ещё действует, затем токены
+     * удаляются, а сервер отзывает refresh-токен.
+     */
     suspend fun logout() {
         val session = storage.load()
+        if (session != null) runBeforeLogout()
         endSession(SessionEndReason.LOGGED_OUT)
         if (session == null) return
         try {
@@ -118,6 +128,32 @@ class ApiClient(
             // Токены уже удалены. Если сервер недоступен, refresh-токен просто истечёт.
         }
     }
+
+    /**
+     * Задача перед выходом, пока вход ещё действует: завершить идущий звонок (иначе он остался бы открытым
+     * на сервере), выключить push на устройстве (иначе вызовы приходили бы вышедшему волонтёру).
+     * Возвращает функцию, которая убирает задачу. Ошибка задачи или нет связи выход не останавливают:
+     * каждая задача ждёт не дольше [BEFORE_LOGOUT_TIMEOUT_MS]. Так же устроен клиент сайта.
+     */
+    fun onBeforeLogout(task: suspend () -> Unit): () -> Unit {
+        beforeLogout += task
+        return { beforeLogout.remove(task) }
+    }
+
+    private suspend fun runBeforeLogout() =
+        coroutineScope {
+            beforeLogout.toList().forEach { task ->
+                launch {
+                    try {
+                        withTimeoutOrNull(BEFORE_LOGOUT_TIMEOUT_MS) { task() }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Нет связи или сервер отказал — выход всё равно продолжается.
+                    }
+                }
+            }
+        }
 
     // --- Профиль ---
 
@@ -341,6 +377,9 @@ class ApiClient(
     companion object {
         /** Access-токен обновляется заранее, если до его истечения осталось меньше этого. */
         const val MIN_TOKEN_VALIDITY_MS = 30_000L
+
+        /** Сколько ждать каждую задачу перед выходом ([onBeforeLogout]), если нет связи. */
+        const val BEFORE_LOGOUT_TIMEOUT_MS = 5_000L
 
         /** Код ошибки, если ответ не в формате API. */
         const val UNKNOWN_ERROR_CODE = "unknown"

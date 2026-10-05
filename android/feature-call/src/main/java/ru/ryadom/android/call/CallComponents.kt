@@ -1,14 +1,18 @@
 package ru.ryadom.android.call
 
 import android.view.View
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.livekit.android.renderer.TextureViewRenderer
@@ -32,6 +36,31 @@ fun LocalCameraPreview(
             onRelease = { current.detachRenderer(it) },
             modifier = modifier.clearAndSetSemantics {},
         )
+    }
+}
+
+/**
+ * Камера собеседника — у волонтёра. Кадр показывается целиком, по центру [modifier]: если задать
+ * элементу видео точный размер, WebRTC обрежет кадр под его форму, а волонтёру нужно видеть весь документ.
+ * Для TalkBack — элемент с подписью: о том, есть ли видео, говорит строка состояния экрана.
+ */
+@Composable
+fun PeerVideo(
+    calls: LiveKitCallFactory,
+    modifier: Modifier = Modifier,
+) {
+    val session by calls.current.collectAsStateWithLifecycle()
+    val current = session ?: return
+    val label = stringResource(R.string.call_peer_video)
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        key(current) {
+            AndroidView(
+                factory = { context -> TextureViewRenderer(context).also { current.attachPeerRenderer(it) } },
+                onRelease = { current.detachPeerRenderer(it) },
+                // Размер — по пропорциям кадра в пределах места (TextureViewRenderer меряет себя сам).
+                modifier = Modifier.wrapContentSize().clearAndSetSemantics { contentDescription = label },
+            )
+        }
     }
 }
 

@@ -87,9 +87,8 @@ class BlindHelpController(
             try {
                 apply(api.createRequest())
             } catch (e: ApiClientException.Server) {
-                // Активный запрос уже есть (создан до перезапуска или на другом устройстве) — покажем его.
                 if (e.code != ApiErrorCodes.ACTIVE_REQUEST_EXISTS) throw e
-                resync()
+                showActiveRequest()
             }
         }
     }
@@ -173,6 +172,31 @@ class BlindHelpController(
             // Нет связи — перечитаем при следующем подключении.
         } finally {
             if (current.screen == BlindScreen.Loading) current = current.copy(screen = BlindScreen.Ready())
+        }
+    }
+
+    /**
+     * Сервер не создал запрос: активный уже есть. Если он создан до перезапуска или на другом устройстве —
+     * показываем его. Если это звонок, который незрячий уже завершил, а сервер тогда отказал
+     * ([confirmCallEnded]), — в него не возвращаем: незрячий мог уйти от неподходящего волонтёра
+     * (docs/ARCHITECTURE.md, раздел 9). Завершаем его ещё раз и просим помощи заново. Если запрос
+     * успел закрыться сам — тоже просим заново. Так кнопка не молчит: либо новый поиск, либо ошибка.
+     */
+    private suspend fun showActiveRequest() {
+        val request = api.currentRequest()
+        when {
+            request == null -> {
+                apply(api.createRequest())
+            }
+
+            request.id == current.closedRequestId -> {
+                api.cancelRequest(request.id)
+                apply(api.createRequest())
+            }
+
+            else -> {
+                apply(request)
+            }
         }
     }
 

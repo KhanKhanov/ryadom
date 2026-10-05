@@ -12,7 +12,10 @@ import ru.ryadom.shared.api.RequestStatus
 import ru.ryadom.shared.api.ServerEvent
 import ru.ryadom.shared.testing.FakeNetworkFailure
 import ru.ryadom.shared.testing.FakeTransport
+import ru.ryadom.shared.testing.MaxJitter
+import ru.ryadom.shared.testing.NoJitter
 import ru.ryadom.shared.testing.helpRequest
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -53,7 +56,7 @@ class RealtimeConnectionTest {
     ) {
         val transport = FakeTransport()
         val auth = FakeAuth(scope)
-        val connection = RealtimeConnection("ws://server/ws", auth, transport, now = { scope.testScheduler.currentTime })
+        val connection = RealtimeConnection("ws://server/ws", auth, transport, now = { scope.testScheduler.currentTime }, random = NoJitter)
         val events = mutableListOf<ServerEvent>()
 
         init {
@@ -256,6 +259,37 @@ class RealtimeConnectionTest {
             runCurrent()
             assertEquals(RealtimeStatus.RECONNECTING, s.connection.status.value)
             assertEquals(2, s.transport.sockets.size)
+        }
+
+    @Test
+    fun reconnectPausesAreSpreadButNeverLonger() {
+        assertEquals(
+            listOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L, 30_000L),
+            (0..5).map { RealtimeConnection.reconnectPause(it, NoJitter) },
+        )
+        assertEquals(listOf(750L, 1_500L, 3_750L, 7_500L, 22_500L), (0..4).map { RealtimeConnection.reconnectPause(it, MaxJitter) })
+
+        val pauses = (1..200).map { RealtimeConnection.reconnectPause(0, Random(it)) }
+        assertTrue(pauses.all { it in 750L..1_000L })
+        assertTrue(pauses.distinct().size > 50, "паузы должны различаться, чтобы клиенты не подключались разом")
+    }
+
+    @Test
+    fun clientsLosingConnectionTogetherDoNotReconnectTogether() =
+        runTest {
+            // Клиент с наибольшим разбросом приходит раньше обещанной секунды.
+            val transport = FakeTransport()
+            val connection =
+                RealtimeConnection("ws://server/ws", FakeAuth(this), transport, now = { testScheduler.currentTime }, random = MaxJitter)
+            connection.start(backgroundScope)
+            runCurrent()
+            transport.last.drop()
+            runCurrent()
+
+            advanceTimeBy(749)
+            assertEquals(1, transport.sockets.size)
+            advanceTimeBy(2)
+            assertEquals(2, transport.sockets.size)
         }
 
     @Test

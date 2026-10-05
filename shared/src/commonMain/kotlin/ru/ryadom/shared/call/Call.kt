@@ -23,6 +23,8 @@ data class CallState(
     val peer: PeerPresence = PeerPresence.WAITING,
     val microphone: MicrophoneState = MicrophoneState.STARTING,
     val camera: CameraState = CameraState.OFF,
+    /** Собеседник показывает видео (у волонтёра — камера незрячего). */
+    val peerVideo: Boolean = false,
 )
 
 data class CallOptions(

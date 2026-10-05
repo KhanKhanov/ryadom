@@ -11,6 +11,19 @@ const CLOSE_BANNED = 4403
 /** Паузы перед повторными попытками подключиться: чем дольше нет связи, тем реже попытки. */
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 30_000]
 
+/**
+ * На какую долю пауза может быть короче, чем в RECONNECT_DELAYS_MS. Когда сервер перезапускается
+ * (обновление), связь теряют все клиенты разом; одинаковые паузы привели бы их обратно в одну и ту же
+ * секунду. Пауза только сокращается: дольше, чем обещано, клиент без связи не ждёт. Так же в shared.
+ */
+const RECONNECT_JITTER = 0.25
+
+/** Пауза перед попыткой после [failures] неудач подряд; [random] — число от 0 до 1 (Math.random). */
+export function reconnectPause(failures: number, random: number): number {
+  const base = RECONNECT_DELAYS_MS[Math.min(Math.max(failures, 0), RECONNECT_DELAYS_MS.length - 1)]
+  return base - Math.round(base * RECONNECT_JITTER * random)
+}
+
 /** За сколько до истечения access-токена отправить в соединение новый (иначе сервер закроет его). */
 const REAUTH_BEFORE_EXPIRY_MS = 60_000
 
@@ -65,6 +78,8 @@ export type RealtimeOptions = {
   /** Конструктор WebSocket; в тестах — поддельный. */
   createSocket?: (url: string) => WebSocket
   now?: () => number
+  /** Случайное число от 0 до 1 для разброса пауз (reconnectPause); в тестах — предсказуемое. */
+  random?: () => number
 }
 
 /**
@@ -78,6 +93,7 @@ export class RealtimeConnection {
   private readonly handlers: RealtimeHandlers
   private readonly createSocket: (url: string) => WebSocket
   private readonly now: () => number
+  private readonly random: () => number
 
   private socket: WebSocket | null = null
   private running = false
@@ -94,6 +110,7 @@ export class RealtimeConnection {
     this.handlers = options.handlers
     this.createSocket = options.createSocket ?? ((url) => new WebSocket(url))
     this.now = options.now ?? Date.now
+    this.random = options.random ?? Math.random
   }
 
   start(): void {
@@ -190,7 +207,7 @@ export class RealtimeConnection {
     const unauthorized = code === CLOSE_UNAUTHORIZED
     if (unauthorized) this.forceRefresh = true
     const immediate = unauthorized && this.failures === 0
-    const delay = immediate ? 0 : RECONNECT_DELAYS_MS[Math.min(this.failures, RECONNECT_DELAYS_MS.length - 1)]
+    const delay = immediate ? 0 : reconnectPause(this.failures, this.random())
     this.failures++
     this.handlers.onStatus('reconnecting')
     this.reconnectTimer = setTimeout(() => this.open(), delay)

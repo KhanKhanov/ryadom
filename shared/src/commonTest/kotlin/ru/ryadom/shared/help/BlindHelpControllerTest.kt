@@ -5,14 +5,10 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import ru.ryadom.shared.api.CallCredentials
 import ru.ryadom.shared.api.HelpRequest
 import ru.ryadom.shared.api.RequestStatus
 import ru.ryadom.shared.api.ServerEvent
 import ru.ryadom.shared.call.CallConnection
-import ru.ryadom.shared.call.CallFactory
-import ru.ryadom.shared.call.CallOptions
-import ru.ryadom.shared.call.CallSession
 import ru.ryadom.shared.call.CallState
 import ru.ryadom.shared.call.CallStatus
 import ru.ryadom.shared.call.CameraState
@@ -22,10 +18,12 @@ import ru.ryadom.shared.client.ApiClient
 import ru.ryadom.shared.client.RealtimeConnection
 import ru.ryadom.shared.client.RealtimeStatus
 import ru.ryadom.shared.client.UserError
+import ru.ryadom.shared.testing.FakeCalls
 import ru.ryadom.shared.testing.FakeNetworkFailure
 import ru.ryadom.shared.testing.FakeResponse
 import ru.ryadom.shared.testing.FakeServer
 import ru.ryadom.shared.testing.FakeTransport
+import ru.ryadom.shared.testing.OTHER_REQUEST_ID
 import ru.ryadom.shared.testing.REQUEST_ID
 import ru.ryadom.shared.testing.callCredentials
 import ru.ryadom.shared.testing.helpRequest
@@ -37,34 +35,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BlindHelpControllerTest {
-    /** Поддельный звонок: запоминает, что с ним сделали; [report] — сообщить новое состояние, как LiveKit. */
-    private class FakeCall(
-        val credentials: CallCredentials,
-        val options: CallOptions,
-        val report: (CallState) -> Unit,
-    ) : CallSession {
-        var connected = false
-        var disconnected = false
-        var microphone: Boolean? = null
-        var retries = 0
-
-        override fun connect() {
-            connected = true
-        }
-
-        override fun setMicrophoneEnabled(enabled: Boolean) {
-            microphone = enabled
-        }
-
-        override fun retryBlockedDevices() {
-            retries++
-        }
-
-        override fun disconnect() {
-            disconnected = true
-        }
-    }
-
     private class Setup(
         private val scope: TestScope,
         hour: Int = 12,
@@ -73,15 +43,9 @@ class BlindHelpControllerTest {
         val api = ApiClient("http://server", server.engine, signedInStorage(), now = { scope.testScheduler.currentTime })
         val transport = FakeTransport()
         val realtime = RealtimeConnection(api.realtimeUrl, api, transport, now = { scope.testScheduler.currentTime })
-        val calls = mutableListOf<FakeCall>()
-        val controller =
-            BlindHelpController(
-                api,
-                realtime,
-                CallFactory { credentials, options, report -> FakeCall(credentials, options, report).also { calls += it } },
-                scope.backgroundScope,
-                localHour = { hour },
-            )
+        val fakeCalls = FakeCalls()
+        val calls get() = fakeCalls.created
+        val controller = BlindHelpController(api, realtime, fakeCalls, scope.backgroundScope, localHour = { hour })
 
         val state get() = controller.state.value
         val screen get() = state.screen
@@ -132,6 +96,23 @@ class BlindHelpControllerTest {
         fun reportCall(peer: PeerPresence) {
             call.report(CallState(connection = CallConnection.CONNECTED, peer = peer))
             scope.runCurrent()
+        }
+
+        /** Звонок закончен у нас, а на сервере остался открытым: сервер отказал в завершении. */
+        fun endCallRefusedByServer() {
+            startCall(volunteerJoined = false)
+            server.on("DELETE", "/requests/$REQUEST_ID") { FakeServer.error(500, "internal_error") }
+            controller.endCall()
+            scope.runCurrent()
+            assertEquals(BlindScreen.Ready(HelpOutcome.CALL_ENDED), screen)
+            server.on("POST", "/requests") {
+                // Пока прежний запрос не закрыт, новый сервер не создаёт.
+                if (server.requestsTo("DELETE", "/requests/$REQUEST_ID").size < 2) {
+                    FakeServer.error(409, "active_request_exists")
+                } else {
+                    FakeServer.ok(HelpRequest.serializer(), helpRequest(RequestStatus.SEARCHING, id = OTHER_REQUEST_ID))
+                }
+            }
         }
     }
 
@@ -372,6 +353,61 @@ class BlindHelpControllerTest {
 
             assertEquals(BlindScreen.Searching(REQUEST_ID), s.screen)
             assertNull(s.state.error)
+        }
+
+    @Test
+    fun callLeftOpenOnServerIsClosedAgainBeforeAskingForHelp() =
+        runTest {
+            val s = Setup(this)
+            s.endCallRefusedByServer()
+            s.respond("DELETE", "/requests/$REQUEST_ID", helpRequest(RequestStatus.ENDED))
+
+            s.controller.requestHelp()
+            runCurrent()
+
+            // Незрячий сам завершил тот звонок — в него не возвращаем, а ищем другого волонтёра.
+            assertEquals(BlindScreen.Searching(OTHER_REQUEST_ID), s.screen)
+            assertEquals(1, s.calls.size)
+            assertEquals(2, s.server.requestsTo("DELETE", "/requests/$REQUEST_ID").size)
+            assertNull(s.state.error)
+        }
+
+    @Test
+    fun callLeftOpenOnServerThatCannotBeClosedIsReported() =
+        runTest {
+            val s = Setup(this)
+            s.endCallRefusedByServer()
+
+            s.controller.requestHelp()
+            runCurrent()
+
+            // Сервер снова отказал — кнопка не молчит, а говорит об ошибке.
+            assertEquals(BlindScreen.Ready(HelpOutcome.CALL_ENDED), s.screen)
+            assertEquals(UserError.UNKNOWN, s.state.error)
+            assertEquals(1, s.calls.size)
+            assertFalse(s.state.busy)
+        }
+
+    @Test
+    fun activeRequestClosedMeanwhileIsCreatedAgain() =
+        runTest {
+            val s = Setup(this)
+            var attempts = 0
+            s.server.on("POST", "/requests") {
+                if (attempts++ == 0) {
+                    FakeServer.error(409, "active_request_exists")
+                } else {
+                    FakeServer.ok(HelpRequest.serializer(), helpRequest(RequestStatus.SEARCHING))
+                }
+            }
+            s.start()
+
+            // Пока ответ 409 шёл к нам, прежний запрос закрылся: текущего запроса уже нет.
+            s.controller.requestHelp()
+            runCurrent()
+
+            assertEquals(BlindScreen.Searching(REQUEST_ID), s.screen)
+            assertEquals(2, s.server.requestsTo("POST", "/requests").size)
         }
 
     @Test

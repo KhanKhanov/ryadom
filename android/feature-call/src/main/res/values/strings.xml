@@ -7,6 +7,7 @@
     <string name="call_microphone_on">Включить микрофон</string>
     <string name="call_microphone_blocked">Нет доступа к микрофону</string>
     <string name="call_microphone_muted">Ваш микрофон выключен.</string>
+    <string name="call_peer_video">Видео с камеры собеседника</string>
 
     <string name="call_notification_channel">Звонок</string>
     <string name="call_notification_searching">Ищем волонтёра</string>

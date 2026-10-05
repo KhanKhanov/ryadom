@@ -63,6 +63,23 @@ class AuthControllerTest {
         }
 
     @Test
+    fun profileChangedElsewhereIsShown() =
+        runTest {
+            val s = signedIn()
+            s.server.on("GET", "/me") { FakeServer.ok(UserProfile.serializer(), profile(Role.VOLUNTEER)) }
+            s.controller.start()
+            runCurrent()
+            val changed = profile(Role.VOLUNTEER).copy(notificationsEnabled = false)
+
+            s.controller.profileChanged(changed)
+            assertEquals(AuthScreen.SignedIn(changed), s.screen)
+
+            // Профиль другого пользователя (опоздавший ответ после смены входа) не показывается.
+            s.controller.profileChanged(changed.copy(id = "someone-else", role = Role.BLIND))
+            assertEquals(AuthScreen.SignedIn(changed), s.screen)
+        }
+
+    @Test
     fun offlineAtStartCanBeRetried() =
         runTest {
             val s = signedIn()
@@ -77,6 +94,67 @@ class AuthControllerTest {
             runCurrent()
 
             assertEquals(AuthScreen.SignedIn(profile(Role.BLIND)), s.screen)
+        }
+
+    @Test
+    fun retryDoesNothingOutsideOfflineScreen() =
+        runTest {
+            val s = signedIn()
+            s.server.on("GET", "/me") { FakeServer.ok(UserProfile.serializer(), profile(Role.BLIND)) }
+            s.controller.start()
+            runCurrent()
+
+            // Платформа вызывает retry() при каждом появлении сети.
+            s.controller.retry()
+            runCurrent()
+
+            assertEquals(AuthScreen.SignedIn(profile(Role.BLIND)), s.screen)
+            assertEquals(1, s.server.requestsTo("GET", "/me").size)
+        }
+
+    @Test
+    fun unknownTimeZoneDoesNotBlockChoosingRole() =
+        runTest {
+            val s = signedOut()
+            s.server.on("POST", "/auth/dev") { FakeServer.ok(AuthResponse.serializer(), authResponse(role = null)) }
+            s.server.on("PATCH", "/me") { request ->
+                if ("timezone" in request.body.orEmpty()) {
+                    FakeServer.error(400, "invalid_request")
+                } else {
+                    FakeServer.ok(UserProfile.serializer(), profile(Role.BLIND))
+                }
+            }
+            s.controller.start()
+            s.controller.loginDev("blind-1")
+            runCurrent()
+
+            s.controller.chooseRole(SelectableRole.BLIND)
+            runCurrent()
+
+            assertEquals(AuthScreen.SignedIn(profile(Role.BLIND)), s.screen)
+            assertNull(s.error)
+            assertEquals(
+                listOf("""{"role":"blind","timezone":"Asia/Yekaterinburg"}""", """{"role":"blind"}"""),
+                s.server.requestsTo("PATCH", "/me").map { it.body },
+            )
+        }
+
+    @Test
+    fun otherErrorsOfChoosingRoleAreNotRetriedWithoutTimeZone() =
+        runTest {
+            val s = signedOut()
+            s.server.on("POST", "/auth/dev") { FakeServer.ok(AuthResponse.serializer(), authResponse(role = null)) }
+            s.server.on("PATCH", "/me") { throw FakeNetworkFailure() }
+            s.controller.start()
+            s.controller.loginDev("blind-1")
+            runCurrent()
+
+            s.controller.chooseRole(SelectableRole.BLIND)
+            runCurrent()
+
+            assertEquals(AuthScreen.ChooseRole(profile(role = null)), s.screen)
+            assertEquals(UserError.NETWORK, s.error)
+            assertEquals(1, s.server.requestsTo("PATCH", "/me").size)
         }
 
     @Test

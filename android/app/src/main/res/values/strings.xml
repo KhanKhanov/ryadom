@@ -19,6 +19,5 @@
     <string name="offline_title">Нет связи</string>
     <string name="offline_retry">Повторить</string>
 
-    <string name="volunteer_not_yet">Приложение для волонтёров появится позже. Пока помогайте через сайт «Рядом». Если помощь нужна вам самим, нажмите «Мне нужна помощь».</string>
-    <string name="role_unsupported">Для вашей роли в приложении пока нет экранов. Пользуйтесь сайтом «Рядом».</string>
+    <string name="role_unsupported">Для вашей роли в приложении нет экранов. Пользуйтесь сайтом «Рядом».</string>
 </resources>

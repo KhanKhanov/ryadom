@@ -39,7 +39,6 @@ import ru.ryadom.android.ui.LiveStatus
 import ru.ryadom.android.ui.ScreenHeading
 import ru.ryadom.android.ui.SecondaryButton
 import ru.ryadom.android.ui.messageRes
-import ru.ryadom.shared.api.Role
 import ru.ryadom.shared.api.SelectableRole
 import ru.ryadom.shared.client.SessionEndReason
 import ru.ryadom.shared.client.UserError
@@ -144,7 +143,7 @@ private fun DevLogin(
     SecondaryButton(text = stringResource(R.string.login_dev), onClick = submit, enabled = !busy && login.isNotBlank())
 }
 
-/** Первый вход: кто вы. Роль «волонтёр» можно потом сменить на «нужна помощь» ([UnsupportedRoleScreen]), на сайте — в обе стороны. */
+/** Первый вход: кто вы. Роль можно потом сменить: волонтёр — кнопкой «Мне нужна помощь», на сайте — в обе стороны. */
 @Composable
 fun RoleScreen(
     error: UserError?,
@@ -185,33 +184,15 @@ fun OfflineScreen(
     }
 }
 
-/**
- * Роль, для которой в приложении пока нет экранов: волонтёр (этап 6) или администратор (только сайт).
- * Волонтёр может сменить роль на «нужна помощь»: иначе незрячий, по ошибке нажавший «Я хочу помогать»,
- * не смог бы попросить помощи — повторный вход роль не сбрасывает.
- */
+/** Роль, для которой в приложении нет экранов: администратор (админка — только на сайте). */
 @Composable
 fun UnsupportedRoleScreen(
-    role: Role?,
-    error: UserError?,
     busy: Boolean,
-    onNeedHelp: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AuthLayout(title = stringResource(R.string.app_name), modifier = modifier) {
-        if (role == Role.VOLUNTEER) {
-            Text(stringResource(R.string.volunteer_not_yet), style = MaterialTheme.typography.bodyLarge)
-            ErrorMessage(text = error?.let { stringResource(it.messageRes) })
-            BigButton(
-                text = stringResource(R.string.role_blind),
-                onClick = onNeedHelp,
-                enabled = !busy,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            Text(stringResource(R.string.role_unsupported), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        }
+        Text(stringResource(R.string.role_unsupported), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         SecondaryButton(text = stringResource(UiR.string.logout), onClick = onLogout, enabled = !busy)
     }
 }

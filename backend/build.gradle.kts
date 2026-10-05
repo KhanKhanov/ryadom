@@ -59,10 +59,16 @@ dependencies {
     testImplementation(libs.kotlin.test)
     // Настоящий PostgreSQL в Docker для интеграционных тестов.
     testImplementation(libs.testcontainers.postgresql)
+    // Каждый ответ сервера в тестах сверяется с docs/api/openapi.yaml (testing/OpenApiContract.kt).
+    testImplementation(libs.json.schema.validator)
 }
 
 tasks.test {
     useJUnitPlatform()
+    // Контракт API, по которому тесты проверяют ответы. Изменился файл — тесты запускаются заново.
+    val openApi = rootProject.file("docs/api/openapi.yaml")
+    inputs.file(openApi).withPropertyName("openApi").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("ryadom.openapi", openApi.absolutePath)
 }
 
 // Новая пара ключей VAPID для Web Push (WEB_PUSH_PUBLIC_KEY и WEB_PUSH_PRIVATE_KEY в infra/.env).

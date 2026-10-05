@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Входящий вызов на весь экран, как у звонилки (IncomingCallNotifications). С Android 14 пользователь
+         может это запретить — тогда вызов приходит всплывающим уведомлением, а кабинет объясняет, как разрешить. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Уведомление о вызове (Android 13+ спрашивает отдельно; запрашивается в кабинете волонтёра). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Вибрация входящего вызова (Ringer). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application>
+        <!-- «Пропустить» в уведомлении о вызове. -->
+        <receiver
+            android:name=".IncomingCallActionReceiver"
+            android:exported="false" />
+    </application>
+
+</manifest>

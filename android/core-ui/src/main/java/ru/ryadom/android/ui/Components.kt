@@ -2,20 +2,24 @@ package ru.ryadom.android.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -151,5 +155,32 @@ fun ErrorMessage(
                 modifier = Modifier.padding(vertical = 8.dp),
             )
         }
+    }
+}
+
+/**
+ * Переключатель с подписью («Готов помогать»). Нажимается вся строка (от 56 dp), а не маленький
+ * переключатель; TalkBack читает подпись и состояние: «Готов помогать, переключатель, включено».
+ */
+@Composable
+fun SwitchRow(
+    text: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = BUTTON_MIN_HEIGHT)
+                .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
+                .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        // Нажатие обрабатывает строка целиком, у самого переключателя своего действия нет.
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }

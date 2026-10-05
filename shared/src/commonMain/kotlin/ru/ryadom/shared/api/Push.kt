@@ -35,7 +35,10 @@ data class WebPushKeys(
 @Serializable
 data class RegisterDeviceRequest(
     val provider: PushProvider,
-    /** Токен устройства от FCM или RuStore; для Web Push — адрес подписки (`PushSubscription.endpoint`). */
+    /**
+     * Адрес устройства в push-сервисе: для FCM — Firebase Installation ID (FID), для RuStore — push-токен,
+     * для Web Push — адрес подписки (`PushSubscription.endpoint`).
+     */
     val token: String,
     /** Ключи подписки — только для [PushProvider.WEB_PUSH]. */
     val webPush: WebPushKeys? = null,

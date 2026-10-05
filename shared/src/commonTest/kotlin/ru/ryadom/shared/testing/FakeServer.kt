@@ -105,6 +105,12 @@ class FakeServer(
             status: Int,
             code: String,
         ) = FakeResponse(status, """{"code":"$code","message":"test"}""")
+
+        /** Тело запроса, который отправил клиент. */
+        fun <T> decode(
+            serializer: KSerializer<T>,
+            request: RecordedRequest,
+        ): T = ApiClient.json.decodeFromString(serializer, checkNotNull(request.body) { "У запроса нет тела" })
     }
 }
 

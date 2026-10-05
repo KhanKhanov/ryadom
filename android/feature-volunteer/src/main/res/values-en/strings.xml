@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="volunteer_title">Volunteer page</string>
+    <string name="volunteer_ready">Ready to help</string>
+    <string name="volunteer_ready_hint_on">Calls come to the app, and with notifications on, even when it is closed.</string>
+    <string name="volunteer_ready_hint_off">You do not receive calls. Turn this on when you are ready to help.</string>
+
+    <string name="volunteer_incoming_title">Someone needs help</string>
+    <string name="volunteer_incoming_language">Language: %1$s</string>
+    <string name="volunteer_language_ru">Russian</string>
+    <string name="volunteer_language_en">English</string>
+    <string name="volunteer_accept">Accept the call</string>
+    <string name="volunteer_accepting">Accepting the call…</string>
+    <string name="volunteer_skip">Skip</string>
+    <string name="volunteer_accept_needs_microphone">You cannot accept a call without the microphone: the blind person would not hear you. Allow the microphone.</string>
+
+    <string name="volunteer_notice_incoming">Incoming call: someone needs help.</string>
+    <string name="volunteer_notice_taken">Another volunteer has accepted the call.</string>
+    <string name="volunteer_notice_accepted_elsewhere">You accepted this call on another device or on the website.</string>
+    <string name="volunteer_notice_cancelled">The call was cancelled.</string>
+    <string name="volunteer_notice_no_answer">The call is no longer waiting for an answer.</string>
+    <string name="volunteer_notice_too_late_taken">Another volunteer has already accepted this call.</string>
+    <string name="volunteer_notice_too_late_closed">This call is already closed.</string>
+    <string name="volunteer_notice_already_in_call">You are already in a call.</string>
+    <string name="volunteer_notice_call_ended_by_peer">The other person ended the call.</string>
+    <string name="volunteer_notice_call_ended">The call has ended.</string>
+    <string name="volunteer_notice_call_not_started">The call did not take place: the other person did not join.</string>
+    <string name="volunteer_notice_ready_on">Calls turned on.</string>
+    <string name="volunteer_notice_ready_off">Calls turned off.</string>
+    <string name="volunteer_notice_rated">Thank you!</string>
+
+    <string name="volunteer_quiet_window">From %1$s to %2$s (%3$s time) you do not receive calls. You can change quiet hours on the Ryadom website.</string>
+    <string name="volunteer_quiet_none">You receive calls at any time of day.</string>
+    <string name="volunteer_quiet_now">Quiet hours now: no calls until %1$s.</string>
+
+    <string name="volunteer_microphone_needed">Allow the microphone: without it the blind person will not hear you.</string>
+    <string name="volunteer_microphone_allow">Allow the microphone</string>
+    <string name="volunteer_notifications_needed">Allow notifications: without them a call will not reach you when the app is closed.</string>
+    <string name="volunteer_notifications_allow">Allow notifications</string>
+    <string name="volunteer_full_screen_needed">Allow full-screen calls: otherwise on a locked phone a call comes as a regular notification.</string>
+    <string name="volunteer_full_screen_allow">Allow full-screen calls</string>
+    <string name="volunteer_open_settings">Open settings</string>
+    <string name="volunteer_push_no_services">This phone has no Google services, so calls come only while the app is open. You can also help from a computer on the Ryadom website.</string>
+    <string name="volunteer_push_not_configured">Call notifications are not set up in this build of the app: calls come only while the app is open.</string>
+    <string name="volunteer_push_failed">Could not set up call notifications: calls come only while the app is open.</string>
+    <string name="volunteer_push_ready">A call will reach you even when the app is closed.</string>
+
+    <string name="volunteer_call_connecting">Connecting to the call…</string>
+    <string name="volunteer_call_waiting">Waiting for the other person to join…</string>
+    <string name="volunteer_call_active">The call is in progress.</string>
+    <string name="volunteer_call_peer_left">The other person disconnected. You can wait or end the call.</string>
+    <string name="volunteer_call_reconnecting">The connection dropped. Reconnecting…</string>
+    <string name="volunteer_call_disconnected">The connection to the call is lost. End the call.</string>
+    <string name="volunteer_call_no_video">No video yet</string>
+    <string name="volunteer_call_microphone_blocked">No access to the microphone: the other person cannot hear you. Allow the microphone in settings.</string>
+
+    <string name="volunteer_rating_question">Were you able to help?</string>
+    <string name="volunteer_rating_yes">Yes</string>
+    <string name="volunteer_rating_no">No</string>
+    <string name="volunteer_rating_skip">Skip</string>
+
+    <string name="volunteer_need_help_hint">If you chose the volunteer role by mistake, change it.</string>
+    <string name="volunteer_need_help">I need help</string>
+    <string name="volunteer_logout_confirm_text">Until you sign in again, calls will not come to this phone.</string>
+
+    <string name="incoming_channel">Incoming calls</string>
+    <string name="incoming_channel_description">Rings when a blind person needs help.</string>
+    <string name="incoming_notification_title">Someone needs help</string>
+    <string name="incoming_notification_text">A blind person needs help over video. Tap to answer.</string>
+    <string name="incoming_notification_accept">Accept</string>
+    <string name="incoming_notification_skip">Skip</string>
+</resources>

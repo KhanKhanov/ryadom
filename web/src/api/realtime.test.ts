@@ -2,7 +2,7 @@ import { vi } from 'vitest'
 import { requestJson } from '../testing/fakes'
 import type { AccessToken } from './client'
 import { SessionEndedError } from './errors'
-import { RealtimeConnection, type RealtimeEvent, type RealtimeStatus } from './realtime'
+import { RealtimeConnection, reconnectPause, type RealtimeEvent, type RealtimeStatus } from './realtime'
 
 /** Поддельный WebSocket: тест открывает, присылает сообщения и закрывает его «со стороны сервера». */
 class FakeSocket {
@@ -37,7 +37,7 @@ class FakeSocket {
 
 const NOW = 1_000_000
 
-function setup(options: { tokens?: AccessToken[] } = {}) {
+function setup(options: { tokens?: AccessToken[]; random?: number } = {}) {
   const sockets: FakeSocket[] = []
   const tokens = options.tokens ?? [{ value: 'access-1', expiresAt: NOW + 15 * 60_000 }]
   let tokenIndex = 0
@@ -60,6 +60,8 @@ function setup(options: { tokens?: AccessToken[] } = {}) {
       return socket as unknown as WebSocket
     },
     now: () => NOW,
+    // Без разброса пауз (reconnectPause), если тест не задал другое.
+    random: () => options.random ?? 0,
   })
   return { connection, sockets, auth, statuses, events, onReady, last: () => sockets[sockets.length - 1] }
 }
@@ -132,6 +134,20 @@ describe('RealtimeConnection', () => {
     last().serverCloses(1006)
     await vi.advanceTimersByTimeAsync(1_000)
     expect(sockets).toHaveLength(4)
+  })
+
+  it('spreads reconnection pauses but never makes them longer', async () => {
+    expect([0, 1, 2, 3, 4, 5].map((failures) => reconnectPause(failures, 0))).toEqual([1_000, 2_000, 5_000, 10_000, 30_000, 30_000])
+    expect([0, 1, 2, 3, 4].map((failures) => reconnectPause(failures, 1))).toEqual([750, 1_500, 3_750, 7_500, 22_500])
+
+    // Клиент с наибольшим разбросом приходит раньше обещанной секунды.
+    const { connection, sockets, last } = setup({ random: 1 })
+    connection.start()
+    last().serverCloses(1006)
+    await vi.advanceTimersByTimeAsync(749)
+    expect(sockets).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(sockets).toHaveLength(2)
   })
 
   it('refreshes the token and reconnects at once when the server rejects it', async () => {

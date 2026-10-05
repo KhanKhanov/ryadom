@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage'] },
+  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -28,8 +28,8 @@ export default tseslint.config(
     languageOptions: { globals: globals.serviceworker },
   },
   {
-    // Скрипты, которые запускает Node.js (например, scripts/generate-icons.mjs).
-    files: ['scripts/**/*.mjs'],
+    // Скрипты, которые запускает Node.js (например, scripts/generate-icons.mjs), и сквозной тест (Playwright).
+    files: ['scripts/**/*.mjs', 'e2e/**/*.ts', 'playwright.config.ts'],
     languageOptions: { globals: globals.node },
   },
 )

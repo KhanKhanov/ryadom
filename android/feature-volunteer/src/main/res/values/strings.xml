@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Строки экранов волонтёра. По умолчанию — русский, английский — values-en/strings.xml.
+     Тексты — как у кабинета волонтёра на сайте (web/src/i18n.ts), где это возможно. -->
+<resources>
+    <string name="volunteer_title">Кабинет волонтёра</string>
+    <string name="volunteer_ready">Готов помогать</string>
+    <string name="volunteer_ready_hint_on">Вызовы приходят в приложение, а с уведомлениями — и когда оно закрыто.</string>
+    <string name="volunteer_ready_hint_off">Вызовы не приходят. Включите, когда будете готовы помочь.</string>
+
+    <string name="volunteer_incoming_title">Нужна помощь</string>
+    <string name="volunteer_incoming_language">Язык: %1$s</string>
+    <string name="volunteer_language_ru">русский</string>
+    <string name="volunteer_language_en">английский</string>
+    <string name="volunteer_accept">Принять вызов</string>
+    <string name="volunteer_accepting">Принимаем вызов…</string>
+    <string name="volunteer_skip">Пропустить</string>
+    <string name="volunteer_accept_needs_microphone">Без микрофона вызов не принять: незрячий вас не услышит. Разрешите микрофон.</string>
+
+    <string name="volunteer_notice_incoming">Входящий вызов: нужна помощь.</string>
+    <string name="volunteer_notice_taken">Вызов принял другой волонтёр.</string>
+    <string name="volunteer_notice_accepted_elsewhere">Вы приняли этот вызов на другом устройстве или на сайте.</string>
+    <string name="volunteer_notice_cancelled">Вызов отменён.</string>
+    <string name="volunteer_notice_no_answer">Вызов больше не ждёт ответа.</string>
+    <string name="volunteer_notice_too_late_taken">Этот вызов уже принял другой волонтёр.</string>
+    <string name="volunteer_notice_too_late_closed">Этот вызов уже закрыт.</string>
+    <string name="volunteer_notice_already_in_call">У вас уже идёт звонок.</string>
+    <string name="volunteer_notice_call_ended_by_peer">Собеседник завершил звонок.</string>
+    <string name="volunteer_notice_call_ended">Звонок завершён.</string>
+    <string name="volunteer_notice_call_not_started">Звонок не состоялся: собеседник не подключился.</string>
+    <string name="volunteer_notice_ready_on">Вызовы включены.</string>
+    <string name="volunteer_notice_ready_off">Вызовы выключены.</string>
+    <string name="volunteer_notice_rated">Спасибо!</string>
+
+    <string name="volunteer_quiet_window">С %1$s до %2$s (часовой пояс %3$s) вызовы не приходят. Изменить время тишины можно на сайте «Рядом».</string>
+    <string name="volunteer_quiet_none">Вызовы приходят в любое время суток.</string>
+    <string name="volunteer_quiet_now">Сейчас время тишины: вызовы не придут до %1$s.</string>
+
+    <string name="volunteer_microphone_needed">Разрешите микрофон: без него незрячий вас не услышит.</string>
+    <string name="volunteer_microphone_allow">Разрешить микрофон</string>
+    <string name="volunteer_notifications_needed">Разрешите уведомления: без них вызов не придёт, когда приложение закрыто.</string>
+    <string name="volunteer_notifications_allow">Разрешить уведомления</string>
+    <string name="volunteer_full_screen_needed">Разрешите показывать вызовы на весь экран: иначе на заблокированном телефоне вызов придёт обычным уведомлением.</string>
+    <string name="volunteer_full_screen_allow">Разрешить вызовы на весь экран</string>
+    <string name="volunteer_open_settings">Открыть настройки</string>
+    <string name="volunteer_push_no_services">На этом телефоне нет сервисов Google, поэтому вызовы приходят, только пока приложение открыто. Помогать можно и с компьютера — через сайт «Рядом».</string>
+    <string name="volunteer_push_not_configured">В этой сборке приложения уведомления о вызовах не настроены: вызовы приходят, только пока приложение открыто.</string>
+    <string name="volunteer_push_failed">Не удалось подключить уведомления о вызовах: вызовы приходят, только пока приложение открыто.</string>
+    <string name="volunteer_push_ready">Вызов придёт, даже когда приложение закрыто.</string>
+
+    <string name="volunteer_call_connecting">Подключаемся к звонку…</string>
+    <string name="volunteer_call_waiting">Ждём, пока собеседник подключится…</string>
+    <string name="volunteer_call_active">Звонок идёт.</string>
+    <string name="volunteer_call_peer_left">Собеседник отключился. Можно подождать или завершить звонок.</string>
+    <string name="volunteer_call_reconnecting">Связь прервалась. Переподключаемся…</string>
+    <string name="volunteer_call_disconnected">Соединение со звонком потеряно. Завершите звонок.</string>
+    <string name="volunteer_call_no_video">Видео пока нет</string>
+    <string name="volunteer_call_microphone_blocked">Нет доступа к микрофону: собеседник вас не слышит. Разрешите микрофон в настройках.</string>
+
+    <string name="volunteer_rating_question">Удалось помочь?</string>
+    <string name="volunteer_rating_yes">Да</string>
+    <string name="volunteer_rating_no">Нет</string>
+    <string name="volunteer_rating_skip">Пропустить</string>
+
+    <string name="volunteer_need_help_hint">Если вы выбрали роль волонтёра по ошибке, смените её.</string>
+    <string name="volunteer_need_help">Мне нужна помощь</string>
+    <string name="volunteer_logout_confirm_text">Пока вы не войдёте снова, вызовы на этот телефон приходить не будут.</string>
+
+    <string name="incoming_channel">Входящие вызовы</string>
+    <string name="incoming_channel_description">Звонит, когда незрячему нужна помощь.</string>
+    <string name="incoming_notification_title">Нужна помощь</string>
+    <string name="incoming_notification_text">Незрячему человеку нужна помощь по видео. Нажмите, чтобы ответить.</string>
+    <string name="incoming_notification_accept">Принять</string>
+    <string name="incoming_notification_skip">Пропустить</string>
+</resources>

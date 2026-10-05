@@ -87,7 +87,7 @@ class FcmSenderTest {
             assertEquals("Bearer access-1", send.headers[HttpHeaders.Authorization])
             assertEquals(
                 Json.parseToJsonElement(
-                    """{"message":{"token":"fcm-device-token","data":{"type":"request.incoming","requestId":"request-1"},""" +
+                    """{"message":{"fid":"fcm-device-token","data":{"type":"request.incoming","requestId":"request-1"},""" +
                         """"android":{"priority":"high","ttl":"42s"}}}""",
                 ),
                 Json.parseToJsonElement((send.body as TextContent).text),

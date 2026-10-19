@@ -2,7 +2,7 @@
 # Обновляйте версии здесь, а не в build.gradle.kts модулей.
 
 [versions]
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 agp = "9.4.1"
 ktor = "3.6.0"
 kotlinx-serialization = "1.11.0"
@@ -17,9 +17,9 @@ ktlint-cli = "1.8.0"
 jackson = "2.22.3"
 
 # Backend: база данных и конфиг
-exposed = "1.5.0"
-flyway = "13.8.1"
-postgresql = "42.7.13"
+exposed = "1.5.1"
+flyway = "13.10.0"
+postgresql = "42.7.14"
 hikaricp = "7.1.0"
 typesafe-config = "1.4.9"
 testcontainers = "2.0.5"

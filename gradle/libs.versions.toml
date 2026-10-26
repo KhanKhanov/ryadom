@@ -14,11 +14,11 @@ ktlint-cli = "1.8.0"
 # Jackson не используется нами напрямую: его тянут java-jwt и jwks-rsa (ktor-server-auth-jwt)
 # для разбора JWT из запросов. Версия поднята принудительно из-за уязвимостей в 2.22.0–2.22.2
 # (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89, GHSA-cxp5-3px4-pw24, GHSA-wv8q-qhhj-9h54 и др.).
-jackson = "2.22.3"
+jackson = "2.22.4"
 
 # Backend: база данных и конфиг
-exposed = "1.5.1"
-flyway = "13.10.0"
+exposed = "1.6.0"
+flyway = "13.10.3"
 postgresql = "42.7.14"
 hikaricp = "7.1.0"
 typesafe-config = "1.4.9"
@@ -39,7 +39,7 @@ yandex-authsdk = "3.3.0"
 # Push-уведомления о вызовах для волонтёра (FCM). Только firebase-messaging, без Google Analytics.
 firebase-bom = "34.19.0"
 # Проверка, есть ли на телефоне сервисы Google (без них FCM не работает).
-play-services-base = "18.11.0"
+play-services-base = "18.11.1"
 
 junit4 = "4.13.2"
 robolectric = "4.17"
